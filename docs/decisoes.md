@@ -1,0 +1,39 @@
+# Registro de decisões — Play.Me
+
+Toda decisão nova entra aqui e no quadro do projeto: https://claude.ai/artifact/JEd8bN1irubJJigj5nKziX
+
+## Decididas
+
+| # | Data | Decisão | Motivo |
+|---|---|---|---|
+| D01 | 26/09/2026 | Nunca alterar playlist existente do Spotify. Só criar playlist nova e privada "[DJ MIX] <nome>", depois de aprovação. | Proteger a biblioteca do usuário. |
+| D02 | 26/09/2026 | MCP próprio `spotify-dj` em TypeScript, OAuth PKCE sem Client Secret, escopos mínimos, análises salvas localmente. | O conector oficial não lê faixas de playlist nem cria playlist em ordem. |
+| D03 | 26/09/2026 | BPM e tom nunca inventados. Fontes por confiança: análise local → Mixar → software de DJ → web cruzada, com [A VALIDAR]. | A Web API não entrega audio features para apps novos. |
+| D04 | 27/09/2026 | Nenhum áudio vem do Spotify. Só arquivos que o usuário possui. | Termos do Spotify e Lei 9.610/98 (DRM). |
+| D05 | 27/09/2026 | Beat This! é a única fonte da grade; tudo indexado por compasso. | Evita grades conflitantes e transições desalinhadas. |
+| D06 | 27/09/2026 | Analisador em Python no WSL2/Docker; MCP e backend em TypeScript; UI em React + Vite + TS; SQLite local. | essentia-tensorflow sem wheel para Windows; allin1 exige NATTEN compilado. |
+| D07 | 27/09/2026 | Jev (TypeSafe) como camada de decisão sobre features; recebe só IDs internos e números; toda decisão tem fallback de regras. | Jev não ouve áudio, roda na nuvem e está em early access. |
+| D08 | 27/09/2026 | Claude opera local via Claude Agent SDK (API key da Anthropic) em `apps/server`. | Mesmo motor do Claude Code, com MCP, permissões e sessões. |
+| D09 | 27/09/2026 | Interface: chat estilo ChatGPT para DJ, desenhada no Google Stitch, implementada pelo Claude Code a partir do DESIGN.md. | Pedido do usuário; Stitch MCP leva o design ao Claude Code. |
+| D10 | 27/09/2026 | Essentia/modelos (AGPL, CC BY-NC) e pedalboard (GPL) só para uso pessoal; virar produto exige troca ou licença. | Licenças não comerciais. |
+| D11 | 28/09/2026 | O quadro do projeto é a fonte central: toda documentação e todo direcional do projeto (decisões, planejamento, EAP, pesquisas, prompts, sets) entram nele, sempre no mesmo link. Regra gravada nas instruções do projeto. | Pedido do usuário. |
+| D12 | 28/09/2026 | O software se chama **Play.Me**. | Definido pelo usuário. |
+| D13 | 28/09/2026 | Design system Play.Me definido em `design/DESIGN.md` e `design/playme-tokens.css`: tema Cabine (dark) padrão, um acento só (signal), cor como informação musical, compasso como unidade de tempo, Geist/Geist Mono. É a fonte para o Stitch e o Claude Code. | Fecha o bloco F (visual) do briefing. |
+| D14 | 28/09/2026 | MVP: o set termina numa playlist nova e privada no Spotify, com guia de transições para o Mix. Pós-MVP: o set toca dentro do próprio Play.Me, com render das transições. | Fecha o fluxo ponta a ponta mais rápido; o app próprio vem depois. |
+| D15 | 28/09/2026 | Repositório local em `C:\Users\Antônio\Desktop\Play.me`, monorepo (apps/, packages/, services/, design/, docs/). O MCP `spotify-dj` foi copiado para `packages/mcp-server`; o original em `Desktop\mcps` segue ativo no Claude Desktop até a validação. | Base única para o Claude Code. |
+
+## Pendentes
+
+| # | Pergunta | Recomendação |
+|---|---|---|
+| P02 | Acesso ao early access do Jev e API key. | Entrar na fila já; construir com regras e plugar o Jev numa sprint própria. |
+| P03 | Escopo do v1. | Chat + análise + set proposto + cards de transição com guia do Mix + aprovação → playlist no Spotify. Fora: render no app, motor em tempo real, export Rekordbox, editor de curvas. |
+| P04 | Prazo e ritmo. | 4 semanas, sprints de 1 semana, telas do Stitch em paralelo na semana 1. |
+| P05 | Rodada 2 do briefing: estados do set, uso pessoal ou produto. | A definir na rodada 2. |
+
+## Próximo passo (28/09/2026)
+
+1. Prompt 01 no Claude Code, na pasta Play.me: fundação do repositório (git, workspace, MCP validado, esqueleto do analisador no WSL2, registro do ambiente).
+2. Prompt 02: Fase 0, Beat This! em 10 faixas. Precisa dos arquivos de áudio.
+3. Telas no Stitch a partir do DESIGN.md, em paralelo com a Fase 0.
+4. Fechar P02–P05 e gerar a EAP.

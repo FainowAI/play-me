@@ -1,0 +1,38 @@
+# dependências e builds
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# segredos
+.env
+*.local
+
+# dados locais (análises, stems, prévias, banco)
+data/*
+!data/.gitkeep
+
+# áudio nunca vai para o git
+*.mp3
+*.wav
+*.flac
+*.aiff
+*.m4a
+
+# sistema
+.DS_Store
+Thumbs.db
+
+# logs (inclui logs de outros MCPs que usam esta pasta como cwd)
+*.log
+*-logs.txt
+
+# mais formatos de áudio
+*.aif
+*.ogg
+*.opus
