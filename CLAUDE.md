@@ -64,6 +64,7 @@ Play.me/
 ├─ services/
 │  └─ analyzer/               # Python 3.11+, FastAPI, roda no WSL2 ou Docker
 │     ├─ analyzer/
+│     │  ├─ api.py            # FastAPI local em 127.0.0.1:8765
 │     │  ├─ decode.py         # ffmpeg → PCM, hash do arquivo
 │     │  ├─ grid.py           # Beat This! → beats, downbeats, compassos, BPM, drift
 │     │  ├─ loudness.py       # EBU R128 integrado + por compasso
@@ -79,7 +80,6 @@ Play.me/
 │     │  ├─ planner/          # planejador de transição (regras + decisões do Jev)
 │     │  ├─ render.py         # prévia renderizada da transição
 │     │  └─ export/           # rekordbox_xml.py, m3u.py, mix_guide.py
-│     ├─ api.py               # FastAPI local em 127.0.0.1
 │     └─ tests/
 ├─ design/
 │  ├─ DESIGN.md               # design system Play.Me (fonte da UI)
@@ -118,7 +118,7 @@ Play.me/
 
 ## Ambiente (Windows)
 
-- Analisador roda no **WSL2 (Ubuntu 24.04)** ou em **Docker**. O essentia-tensorflow não publica wheel para Windows; o allin1 exige compilar o NATTEN no Windows.
+- Analisador roda no **WSL2 (hoje Ubuntu 22.04 + Python 3.12 via uv; ver `docs/decisions/0001-ambiente.md`)** ou em **Docker**. O essentia-tensorflow não publica wheel para Windows; o allin1 exige compilar o NATTEN no Windows.
 - GPU NVIDIA com CUDA acelera muito Demucs e allin1. Sem GPU, funciona, mas a análise de centenas de faixas leva horas: processar em fila, em segundo plano.
 - MCP e UI podem rodar no Windows nativo e falar com o analisador em `http://127.0.0.1:<porta>`.
 - Caminhos de arquivo: guardar o caminho Windows original e o caminho WSL (`/mnt/c/...`) na tabela de arquivos.

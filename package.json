@@ -1,0 +1,14 @@
+{
+  "name": "play-me",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "pretest": "npm run build",
+    "test": "npm run test:engine -w packages/mcp-server && npm run test:server -w packages/mcp-server"
+  }
+}
