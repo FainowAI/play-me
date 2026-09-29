@@ -1,0 +1,148 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Analisando.dc.html": {
+      "h": 900,
+      "title": "2 · Conversa · buscando BPM e tom",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Aprovacao.dc.html": {
+      "h": 900,
+      "title": "4 · Aprovação",
+      "w": 1440,
+      "x": 4560,
+      "y": 0
+    },
+    "Configuracoes.dc.html": {
+      "h": 900,
+      "title": "8 · Configurações",
+      "w": 1440,
+      "x": 3040,
+      "y": 1400
+    },
+    "Enviado.dc.html": {
+      "h": 900,
+      "title": "5 · Enviado + guia do Mix",
+      "w": 1440,
+      "x": 6080,
+      "y": 0
+    },
+    "Faixa.dc.html": {
+      "h": 900,
+      "title": "7 · Faixa (gaveta)",
+      "w": 1440,
+      "x": 1520,
+      "y": 1400
+    },
+    "Main.dc.html": {
+      "h": 900,
+      "title": "1 · Início",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "SetPanel.dc.html": {
+      "h": 900,
+      "title": "Peça · Painel do set",
+      "w": 400,
+      "x": 344,
+      "y": 2800
+    },
+    "SetProposto.dc.html": {
+      "h": 900,
+      "title": "3 · Set proposto + painel do set",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "Sidebar.dc.html": {
+      "h": 900,
+      "title": "Peça · Sidebar",
+      "w": 264,
+      "x": 0,
+      "y": 2800
+    },
+    "Transicao.dc.html": {
+      "h": 900,
+      "title": "6 · Transição expandida",
+      "w": 1440,
+      "x": 0,
+      "y": 1400
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-28T21:40:00Z",
+    "v": 1
+  },
+  "designSystems": [
+    {
+      "artifact": "https://claude.ai/artifact/MNHQn2dmZhJa4XCUwPWbxn",
+      "copiedAt": "2026-09-28T21:40:00Z",
+      "namespace": "playme",
+      "title": "Play.Me",
+      "version": "1790630657-462b"
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "n-dados": {
+      "fill": "orange",
+      "size": 24,
+      "text": "Dados reais: ordem, BPM, Camelot e energia do set [DJ MIX] Eletro (27/09). BPM e Camelot vêm do Mixar; energia é estimativa do Claude (marcada com *).\n\nRota D22 (MVP por metadados): BPM e tom das outras faixas vêm do GetSongBPM, conferidos com o Deezer. A cobertura da tela 2 é ilustrativa até a Fase M.\n\nIlustrativos até a Fase P: tipo e duração da transição e o guia do Mix. Estrutura por compasso só na trilha de áudio (opcional).",
+      "w": 460,
+      "x": 4560,
+      "y": 1400
+    },
+    "n-tema": {
+      "fill": "blue",
+      "size": 24,
+      "text": "Cada tela tem o tweak Tema (Cabine dark · Dia light). O orb de pensamento acompanha o tema sozinho.",
+      "w": 420,
+      "x": 5100,
+      "y": 1400
+    },
+    "t-camadas": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Camadas sobre o chat",
+      "w": 240,
+      "x": 0,
+      "y": 1100
+    },
+    "t-fluxo": {
+      "kind": "title1",
+      "maxW": 7520,
+      "text": "Fluxo principal: do pedido à playlist",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "t-pecas": {
+      "kind": "title1",
+      "maxW": 744,
+      "text": "Peças reutilizadas",
+      "w": 240,
+      "x": 0,
+      "y": 2500
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Analisando.dc.html",
+    "SetProposto.dc.html",
+    "Aprovacao.dc.html",
+    "Enviado.dc.html",
+    "Transicao.dc.html",
+    "Faixa.dc.html",
+    "Configuracoes.dc.html",
+    "Sidebar.dc.html",
+    "SetPanel.dc.html"
+  ],
+  "pages": [],
+  "title": "Play.Me · Telas do MVP"
+}

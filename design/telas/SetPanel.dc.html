@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Painel do set</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="playme-tokens.css">
+<link rel="stylesheet" href="ds/playme/components/bundle.css">
+<script src="ds/playme/components/lib/thinking-orbs.js"></script>
+<script src="ds/playme/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<aside aria-label="Painel do set" data-theme="{{theme}}" style="width: 400px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: var(--surface-raised); border-left: 1px solid var(--line); font-family: var(--font-sans); color: var(--ink)">
+<header style="display: flex; flex-direction: column; gap: 12px; padding: 20px 20px 0">
+<div style="display: flex; align-items: center; gap: 8px">
+<span class="label" style="color: var(--ink-subtle); flex-grow: 1">Set · {{version}}</span>
+<sc-if value="{{busy}}" hint-placeholder-val="{{false}}">
+<x-import component-from-global-scope="PlayMe.ThinkingStatus" activity="composing" verb="Recalculando" size="{{n20}}"></x-import>
+</sc-if>
+<sc-if value="{{isRascunho}}" hint-placeholder-val="{{true}}">
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="neutral">Rascunho</x-import>
+</sc-if>
+<sc-if value="{{isAprovacao}}" hint-placeholder-val="{{false}}">
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="warn">Aguardando aprovação</x-import>
+</sc-if>
+<sc-if value="{{isEnviado}}" hint-placeholder-val="{{false}}">
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="ok">Enviado ao Spotify</x-import>
+</sc-if>
+</div>
+<h2 class="title-2" style="margin: 0; text-wrap: balance">Eletro · warm up → peak</h2>
+<div style="font: 500 12px/16px var(--font-mono); color: var(--ink-subtle); font-variant-numeric: tabular-nums">21 faixas · nota média 0,84 · curva classic</div>
+<div role="tablist" aria-label="Visões do set" style="display: flex; gap: 20px; border-bottom: 1px solid var(--line); margin-top: 4px">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+<button type="button" role="tab" aria-selected="{{t.selected}}" style="{{t.style}}">{{t.label}}</button>
+</sc-for>
+</div>
+</header>
+<sc-if value="{{isOrdem}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 16px; padding: 16px 20px 0; flex-grow: 1; min-height: 0; overflow: hidden">
+<x-import component-from-global-scope="PlayMe.SetArc" points="{{arc}}" current="{{current}}" caption="Pico na faixa 14. Atenção: 12, 13 e 14 seguidas com E9 ou mais, sem respiro."></x-import>
+<div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden; margin: 0 -8px">
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+<div class="label" style="color: var(--ink-subtle); padding: 12px 8px 4px">{{g.name}}</div>
+<sc-for list="{{g.tracks}}" as="t" hint-placeholder-count="3">
+<x-import component-from-global-scope="PlayMe.TrackRow" index="{{t.i}}" title="{{t.title}}" artist="{{t.artist}}" bpm="{{t.bpm}}" camelot="{{t.key}}" energy="{{t.e}}" estimated="{{yes}}" state="{{t.state}}"></x-import>
+</sc-for>
+</sc-for>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isGuia}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 0; flex-grow: 1; min-height: 0; overflow: hidden">
+<p style="margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-muted)">Aplique no Mix do app do Spotify, passagem por passagem. O beatgrid do Spotify pode divergir em até 1 compasso.</p>
+<sc-for list="{{guide}}" as="g" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface-overlay)">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="font: 500 12px/16px var(--font-mono); color: var(--ink-subtle); min-width: 36px">{{g.pos}}</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{g.pair}}</span>
+<x-import component-from-global-scope="PlayMe.KeyBadge" camelot="{{g.from}}"></x-import>
+<x-import component-from-global-scope="PlayMe.KeyBadge" camelot="{{g.to}}"></x-import>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="{{g.tone}}">{{g.rel}}</x-import>
+<span style="font: 500 12px/16px var(--font-mono); color: var(--ink-muted)">{{g.mix}}</span>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<footer style="display: flex; align-items: center; gap: 8px; padding: 12px 20px 16px; border-top: 1px solid var(--line); margin-top: 12px">
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="warn">2 fora do set</x-import>
+<span style="flex-grow: 1; font-size: 13px; line-height: 20px; color: var(--ink-subtle)">Cruisin' · This Rhythm</span>
+<x-import component-from-global-scope="PlayMe.Button" variant="ghost" size="sm">Ver pendências</x-import>
+</footer>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"tab":{"editor":"enum","options":["ordem","transicoes","guia"],"default":"ordem"},"version":{"editor":"enum","options":["V1","V2"],"default":"V1"},"status":{"editor":"enum","options":["rascunho","aprovacao","enviado"],"default":"rascunho"},"busy":{"editor":"boolean","default":false},"current":{"editor":"int","min":-1,"max":20,"default":-1},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":400,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tab = this.props.tab ?? 'ordem';
+    const status = this.props.status ?? 'rascunho';
+    const current = this.props.current ?? -1;
+    const set = [
+      ['Abertura', "Don't This", 'Fairtone', 122, '7B', 4],
+      ['Abertura', 'Nothing Wrong (Love Mix)', 'OMRI.', 124, '7A', 5],
+      ['Abertura', 'All By Myself', 'Mita Gami', 124, '6A', 5],
+      ['Abertura', 'Ghost Dance', 'Brunello, Vargas', 125, '5A', 6],
+      ['Construção', 'Lonesome', 'Charlotte de Witte', 124, '5A', 6],
+      ['Construção', 'fractured light', 'kalm', 125, '4A', 6],
+      ['Construção', 'Level One', 'Boris Brejcha', 125, '4A', 7],
+      ['Crescimento', 'Like I Like It', 'Mau P', 128, '4B', 7],
+      ['Crescimento', 'Bald Ponytail', 'Kaufmann (DE)', 130, '4B', 8],
+      ['Crescimento', "Talkin' Too Much", 'Ribguga, Balanka', 128, '3B', 7],
+      ['Pico', 'Deceiver (VIP)', 'Chris Lake, Green Velvet', 124, '2A', 8],
+      ['Pico', 'Moon Rocks', 'Enrico Sangiuliano', 125, '2A', 9],
+      ['Clímax', 'Freak', 'GENESI, MEDUZA, Aya Anne', 128, '1B', 9],
+      ['Clímax', 'Paranoia', 'JUNTARO', 130, '12A', 10],
+      ['Encerramento', "The Sun Can't Compare", 'Space Motion, Kashovski', 124, '12B', 6],
+      ['Encerramento', 'Science Fiction', 'Brunello', 127, '10B', 6],
+      ['Encerramento', 'Adored', 'J. Worra', 126, '9A', 6],
+      ['Encerramento', 'Voice of Rem', 'Rem Siman', 124, '9A', 5],
+      ['Encerramento', "Fool's Paradise (Joris Voorn Remix)", 'Mees Salomé', 124, '8B', 5],
+      ['Encerramento', 'Let It Go (Vintage Culture Remix)', 'Louie Vega', 124, '7B', 5],
+      ['Encerramento', 'You Were Right', 'RÜFÜS DU SOL', 122, '4B', 4]
+    ];
+    const groups = [];
+    set.forEach((r, i) => {
+      let g = groups[groups.length - 1];
+      if (!g || g.name !== r[0]) { g = { name: r[0], tracks: [] }; groups.push(g); }
+      g.tracks.push({ i: i + 1, title: r[1], artist: r[2], bpm: r[3], key: r[4], e: r[5], state: i === current ? 'playing' : 'default' });
+    });
+    const tabBase = 'appearance: none; background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 0; margin-bottom: -1px; font: 500 14px/20px var(--font-sans); cursor: pointer; ';
+    const tabs = [['ordem', 'Ordem'], ['transicoes', 'Transições'], ['guia', 'Guia do Mix']].map(([id, label]) => ({
+      label, selected: id === tab ? 'true' : 'false',
+      style: tabBase + (id === tab ? 'color: var(--ink); border-bottom-color: var(--ink);' : 'color: var(--ink-subtle);')
+    }));
+    const guide = [
+      { pos: '1 → 2', pair: "Don't This → Nothing Wrong", from: '7B', to: '7A', tone: 'ok', rel: 'Segura · relativa', mix: 'Blend · 16 c. · grave troca no c.9' },
+      { pos: '2 → 3', pair: 'Nothing Wrong → All By Myself', from: '7A', to: '6A', tone: 'ok', rel: 'Segura · −1', mix: 'Blend · 16 c. · grave troca no c.9' },
+      { pos: '3 → 4', pair: 'All By Myself → Ghost Dance', from: '6A', to: '5A', tone: 'ok', rel: 'Segura · −1', mix: 'Wave · 16 c. · +1 BPM' },
+      { pos: '4 → 5', pair: 'Ghost Dance → Lonesome', from: '5A', to: '5A', tone: 'ok', rel: 'Segura · mesmo tom', mix: 'Blend · 32 c.' },
+      { pos: '5 → 6', pair: 'Lonesome → fractured light', from: '5A', to: '4A', tone: 'ok', rel: 'Segura · −1', mix: 'Blend · 16 c. · grave troca no c.9' },
+      { pos: '13 → 14', pair: 'Freak → Paranoia', from: '1B', to: '12A', tone: 'info', rel: 'Criativa · diagonal', mix: 'Rise · 8 c. · +2 BPM' },
+      { pos: '14 → 15', pair: "Paranoia → The Sun Can't Compare", from: '12A', to: '12B', tone: 'warn', rel: 'Segura · −6 BPM', mix: 'Fade · 8 c. · echo out no break' }
+    ];
+    return {
+      theme: this.props.theme ?? 'dark',
+      version: this.props.version ?? 'V1',
+      busy: this.props.busy ?? false,
+      n20: 20, yes: true,
+      isRascunho: status === 'rascunho', isAprovacao: status === 'aprovacao', isEnviado: status === 'enviado',
+      isOrdem: tab !== 'guia', isGuia: tab === 'guia',
+      tabs, groups, guide, current,
+      arc: set.map((r) => ({ energy: r[5] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

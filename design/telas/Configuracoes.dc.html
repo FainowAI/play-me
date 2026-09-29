@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Play.Me · Configurações</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="playme-tokens.css">
+<link rel="stylesheet" href="ds/playme/components/bundle.css">
+<script src="ds/playme/components/lib/thinking-orbs.js"></script>
+<script src="ds/playme/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; height: 900px; position: relative; display: flex; overflow: hidden; background: var(--surface-base); color: var(--ink); font-family: var(--font-sans)">
+<dc-import name="Sidebar" active="nenhum" theme="{{theme}}" hint-size="264px,900px"></dc-import>
+<main style="flex-grow: 1"></main>
+<div style="position: absolute; inset: 0; background: var(--scrim)"></div>
+<section role="dialog" aria-label="Configurações" style="position: absolute; top: 56px; left: 340px; width: 760px; height: 788px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; padding: 28px 32px; border-radius: 20px; background: var(--surface-raised); border: 1px solid var(--line); box-shadow: var(--shadow-float)">
+<div style="display: flex; align-items: center; gap: 12px">
+<h2 class="title-2" style="margin: 0; flex-grow: 1">Configurações</h2>
+<x-import component-from-global-scope="PlayMe.Button" variant="ghost" size="sm">Fechar</x-import>
+</div>
+<div style="display: flex; flex-direction: column">
+<span class="label" style="color: var(--ink-subtle); padding-bottom: 4px">Conexões</span>
+<sc-for list="{{conns}}" as="c" hint-placeholder-count="6">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--line)">
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+<span style="font-size: 14px; line-height: 20px; font-weight: 500">{{c.name}}</span>
+<span style="font-size: 13px; line-height: 20px; color: var(--ink-muted)">{{c.detail}}</span>
+</div>
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="{{c.tone}}">{{c.status}}</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="{{c.variant}}" size="sm">{{c.action}}</x-import>
+</div>
+</sc-for>
+</div>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span class="label" style="color: var(--ink-subtle)">Tema</span>
+<div role="radiogroup" aria-label="Tema" style="display: flex; padding: 3px; border-radius: 999px; background: var(--surface-overlay); border: 1px solid var(--line)">
+<button type="button" role="radio" aria-checked="true" style="flex-grow: 1; height: 32px; border: 0; border-radius: 999px; background: var(--ink); color: var(--ink-inverse); font: 500 13px/20px var(--font-sans)">Cabine</button>
+<button type="button" role="radio" aria-checked="false" style="flex-grow: 1; height: 32px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-muted); font: 500 13px/20px var(--font-sans)">Dia</button>
+</div>
+<span style="font-size: 12px; line-height: 16px; color: var(--ink-subtle)">Cabine é o padrão para a pista.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span class="label" style="color: var(--ink-subtle)">Pesos da nota do par</span>
+<sc-for list="{{weights}}" as="w" hint-placeholder-count="5">
+<label for="{{w.id}}" style="display: grid; grid-template-columns: 120px minmax(0, 1fr) 44px; align-items: center; gap: 12px; font-size: 13px; line-height: 20px; color: var(--ink-muted)">
+<span>{{w.name}}</span>
+<input id="{{w.id}}" type="range" min="0" max="100" value="{{w.value}}" style="width: 100%; accent-color: var(--ink-muted)">
+<span style="font: 500 13px/20px var(--font-mono); color: var(--ink); text-align: right">{{w.value}}%</span>
+</label>
+</sc-for>
+<span style="font-size: 12px; line-height: 16px; color: var(--ink-subtle)">Soma 100%. Afeta a ordem dos próximos sets, não os já enviados.</span>
+</div>
+</div>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; justify-content: flex-end; gap: 8px">
+<x-import component-from-global-scope="PlayMe.Button" variant="ghost">Cancelar</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="primary">Salvar</x-import>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      theme: this.props.theme ?? 'dark',
+      conns: [
+        { name: 'Spotify', detail: 'Catálogo: playlists e ISRC. Cria só playlist nova e privada. Login vale 180 dias.', tone: 'ok', status: 'Conectado', variant: 'ghost', action: 'Reconectar' },
+        { name: 'GetSongBPM', detail: 'BPM e tom por artista e título. Chave no .env. Exige link público para getsongbpm.com.', tone: 'ok', status: 'Configurada', variant: 'ghost', action: 'Ver cobertura' },
+        { name: 'Deezer', detail: 'BPM pelo ISRC, para conferir. API pública, sem chave. Prévias de áudio ignoradas.', tone: 'ok', status: 'Ativa', variant: 'ghost', action: 'Testar' },
+        { name: 'Trilha de áudio', detail: 'Opcional. Pasta de música + analisador local (Beat This!) para estrutura por compasso.', tone: 'neutral', status: 'Opcional', variant: 'outline', action: 'Configurar' },
+        { name: 'Jev · TypeSafe', detail: 'Early access. Até liberar, decide o planejador de regras.', tone: 'warn', status: 'Sem acesso', variant: 'ghost', action: 'Inserir chave' },
+        { name: 'Claude · API da Anthropic', detail: 'Chave lida do .env do servidor local. Nunca aparece aqui.', tone: 'ok', status: 'Configurada', variant: 'ghost', action: 'Ver uso' }
+      ],
+      weights: [
+        { id: 'w-camelot', name: 'Camelot', value: 35 },
+        { id: 'w-bpm', name: 'BPM', value: 25 },
+        { id: 'w-energia', name: 'Energia', value: 25 },
+        { id: 'w-estilo', name: 'Estilo e groove', value: 10 },
+        { id: 'w-progressao', name: 'Progressão', value: 5 }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

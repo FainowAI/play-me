@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Sidebar</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="playme-tokens.css">
+<link rel="stylesheet" href="ds/playme/components/bundle.css">
+<script src="ds/playme/components/lib/thinking-orbs.js"></script>
+<script src="ds/playme/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<nav aria-label="Sets e playlists" data-theme="{{theme}}" style="width: 264px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; padding: 20px 12px 16px; background: var(--surface-raised); border-right: 1px solid var(--line); font-family: var(--font-sans); color: var(--ink)">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 0 8px">
+<span style="font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.02em">Play<span style="color: var(--signal)">.</span>Me</span>
+</div>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" icon="plus">Novo set</x-import>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div class="label" style="color: var(--ink-subtle); padding: 0 8px 6px">Sets</div>
+<sc-for list="{{sets}}" as="s" hint-placeholder-count="4">
+<a href="#" style="{{s.rowStyle}}">
+<span style="flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{s.name}}</span>
+<sc-if value="{{s.busy}}" hint-placeholder-val="{{false}}">
+<x-import component-from-global-scope="PlayMe.AgentOrb" activity="{{s.activity}}" size="{{s.orbSize}}"></x-import>
+</sc-if>
+<sc-if value="{{s.showTag}}" hint-placeholder-val="{{true}}">
+<span style="font-size: 11px; line-height: 16px; color: var(--ink-subtle)">{{s.tag}}</span>
+</sc-if>
+</a>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div class="label" style="color: var(--ink-subtle); padding: 0 8px 6px">Playlists do Spotify</div>
+<a href="#" style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px; border-radius: 12px; color: var(--ink-muted); text-decoration: none; font-size: 14px">
+<span style="flex-grow: 1">Eletro</span>
+<span style="font: 500 12px/16px var(--font-mono); color: var(--ink-subtle)">548</span>
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px; border-radius: 12px; color: var(--ink-muted); text-decoration: none; font-size: 14px">
+<span style="flex-grow: 1">2026</span>
+<span style="font: 500 12px/16px var(--font-mono); color: var(--ink-subtle)">137</span>
+</a>
+</div>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 8px; border-top: 1px solid var(--line)">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink-muted)">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ok)"></span>
+<span style="flex-grow: 1">Spotify</span>
+<span style="color: var(--ink-subtle)">conectado</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink-muted)">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ok)"></span>
+<span style="flex-grow: 1">GetSongBPM</span>
+<span style="color: var(--ink-subtle)">chave ok</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink-muted)">
+<span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ok)"></span>
+<span style="flex-grow: 1">Deezer</span>
+<span style="color: var(--ink-subtle)">pública</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink-muted)">
+<span style="width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--warn); box-sizing: border-box"></span>
+<span style="flex-grow: 1">Jev</span>
+<span style="color: var(--ink-subtle)">sem acesso · regras</span>
+</div>
+</div>
+<x-import component-from-global-scope="PlayMe.Button" variant="ghost" size="sm">Configurações</x-import>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["nenhum","eletro","enviado"],"default":"eletro"},"busy":{"editor":"boolean","default":false},"activity":{"editor":"enum","options":["reading","listening","composing","shipping","scoring"],"default":"reading"},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":264,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const active = this.props.active ?? 'eletro';
+    const busy = this.props.busy ?? false;
+    const base = 'display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px; border-radius: 12px; text-decoration: none; font-size: 14px; ';
+    const on = base + 'background: var(--surface-overlay); color: var(--ink);';
+    const off = base + 'color: var(--ink-muted);';
+    const rows = [
+      { id: 'eletro', name: 'Eletro · warm up → peak', tag: 'rascunho' },
+      { id: 'enviado', name: '[DJ MIX] Eletro', tag: 'enviado' },
+      { id: 'warm', name: 'Warm up 2026', tag: 'rascunho' },
+      { id: 'sunrise', name: 'Sunrise domingo', tag: 'rascunho' }
+    ];
+    return {
+      theme: this.props.theme ?? 'dark',
+      sets: rows.map((r) => {
+        const isOn = r.id === active;
+        const isBusy = isOn && busy;
+        return { name: r.name, tag: r.tag, rowStyle: isOn ? on : off, busy: isBusy, showTag: !isBusy, activity: this.props.activity ?? 'reading', orbSize: 20 };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

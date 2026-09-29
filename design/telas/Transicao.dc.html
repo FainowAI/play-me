@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Play.Me · Transição expandida</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="playme-tokens.css">
+<link rel="stylesheet" href="ds/playme/components/bundle.css">
+<script src="ds/playme/components/lib/thinking-orbs.js"></script>
+<script src="ds/playme/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; height: 900px; position: relative; display: flex; overflow: hidden; background: var(--surface-base); color: var(--ink); font-family: var(--font-sans)">
+<dc-import name="Sidebar" active="eletro" theme="{{theme}}" hint-size="264px,900px"></dc-import>
+<main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+<header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 24px; border-bottom: 1px solid var(--line)">
+<span style="font-size: 15px; line-height: 24px; font-weight: 500">Eletro · warm up → peak</span>
+</header>
+</main>
+<div style="position: absolute; inset: 0; background: var(--scrim)"></div>
+<section role="dialog" aria-label="Transição 14 para 15" style="position: absolute; top: 0; right: 0; bottom: 0; width: 820px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; padding: 24px 32px; background: var(--surface-raised); border-left: 1px solid var(--line); box-shadow: var(--shadow-float); overflow: hidden">
+<div style="display: flex; align-items: flex-start; gap: 12px">
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 6px">
+<span class="label" style="color: var(--ink-subtle)">Transição 14 → 15 · clímax → encerramento · plano por metadados</span>
+<h2 class="title-2" style="margin: 0">Paranoia → The Sun Can't Compare</h2>
+</div>
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="warn">Segura · relativa · −6 BPM</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="ghost" size="sm">Fechar</x-import>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div style="display: flex; align-items: center; gap: 16px; padding: 16px; border-radius: 12px; background: var(--surface-overlay)">
+<span class="pm-deck pm-deck--a">A</span>
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 15px; line-height: 20px; font-weight: 500">Paranoia</span>
+<span style="font-size: 13px; line-height: 20px; color: var(--ink-muted)">JUNTARO · sai</span>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+<span class="data-xl">130<span style="font-size: 16px; color: var(--ink-subtle)"> BPM</span></span>
+<div style="display: flex; align-items: center; gap: 8px">
+<x-import component-from-global-scope="PlayMe.KeyBadge" camelot="12A"></x-import>
+<x-import component-from-global-scope="PlayMe.EnergyMeter" value="{{e10}}" estimated="{{yes}}"></x-import>
+</div>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 16px; padding: 16px; border-radius: 12px; background: var(--surface-overlay)">
+<span class="pm-deck pm-deck--b">B</span>
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 15px; line-height: 20px; font-weight: 500">The Sun Can't Compare</span>
+<span style="font-size: 13px; line-height: 20px; color: var(--ink-muted)">Space Motion, Kashovski · entra</span>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+<span class="data-xl">124<span style="font-size: 16px; color: var(--ink-subtle)"> BPM</span></span>
+<div style="display: flex; align-items: center; gap: 8px">
+<x-import component-from-global-scope="PlayMe.KeyBadge" camelot="12B"></x-import>
+<x-import component-from-global-scope="PlayMe.EnergyMeter" value="{{e6}}" estimated="{{yes}}"></x-import>
+</div>
+</div>
+</div>
+</div>
+<dl style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line)">
+<div style="display: flex; flex-direction: column; gap: 2px"><dt class="label" style="color: var(--ink-subtle)">Tipo</dt><dd style="margin: 0; font: 500 14px/20px var(--font-mono)">Echo out</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><dt class="label" style="color: var(--ink-subtle)">Duração</dt><dd style="margin: 0; font: 500 14px/20px var(--font-mono)">8 c.</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><dt class="label" style="color: var(--ink-subtle)">Harmonia</dt><dd style="margin: 0; font: 500 14px/20px var(--font-mono)">12A → 12B</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><dt class="label" style="color: var(--ink-subtle)">ΔBPM</dt><dd style="margin: 0; font: 500 14px/20px var(--font-mono)">−6</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><dt class="label" style="color: var(--ink-subtle)">ΔEnergia</dt><dd style="margin: 0; font: 500 14px/20px var(--font-mono)">−4</dd></div>
+</dl>
+<div style="display: flex; align-items: center; gap: 16px; padding: 16px; border-radius: 12px; border: 1px dashed var(--line-strong)">
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 6px">
+<span class="label" style="color: var(--ink-subtle)">Estrutura por compasso · trilha opcional</span>
+<p style="margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-muted)">Sem arquivo, o plano não marca o compasso de saída de A nem o de entrada de B. O Mix do Spotify alinha as batidas; você escolhe o ponto ouvindo.</p>
+</div>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm">Casar arquivos</x-import>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 176px; gap: 20px; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 12px; border: 1px solid var(--line)">
+<span class="label" style="color: var(--ink-subtle)">Guia do Mix</span>
+<p style="margin: 0; font-size: 14px; line-height: 22px">Preset Fade, transição curta. Solte B quando A entrar no último break. B entra limpa. Com −6 BPM, se o Mix acelerar B demais, troque B.</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="ok">Harmonia segura · relativa</x-import>
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="warn">ΔBPM acima de 5</x-import>
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="neutral">Vocal e grave: sem dado</x-import>
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="ok">Respiro depois do clímax</x-import>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<span class="label" style="color: var(--ink-subtle); margin-right: 4px">Sua nota</span>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm" label="Nota 1">1</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm" label="Nota 2">2</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm" label="Nota 3">3</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm" label="Nota 4">4</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm" label="Nota 5">5</x-import>
+<span style="flex-grow: 1"></span>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm">Trocar B</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="ghost" size="sm" icon="play" disabled="{{yes}}">Prévia · pós-MVP</x-import>
+</div>
+</div>
+<x-import component-from-global-scope="PlayMe.CamelotWheel" active="12A" compatible="{{compat}}" size="{{wheel}}"></x-import>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      theme: this.props.theme ?? 'dark',
+      yes: true, e10: 10, e6: 6, wheel: 176,
+      compat: ['11A', '1A', '12B']
+    };
+  }
+}
+</script>
+</body>
+</html>

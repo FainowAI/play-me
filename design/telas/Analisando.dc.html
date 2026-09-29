@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Play.Me · Analisando faixas</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="playme-tokens.css">
+<link rel="stylesheet" href="ds/playme/components/bundle.css">
+<script src="ds/playme/components/lib/thinking-orbs.js"></script>
+<script src="ds/playme/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; height: 900px; display: flex; overflow: hidden; background: var(--surface-base); color: var(--ink); font-family: var(--font-sans)">
+<dc-import name="Sidebar" active="eletro" busy="{{yes}}" activity="reading" theme="{{theme}}" hint-size="264px,900px"></dc-import>
+<main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+<header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 24px; border-bottom: 1px solid var(--line)">
+<span style="font-size: 15px; line-height: 24px; font-weight: 500">Eletro · warm up → peak</span>
+<span style="flex-grow: 1"></span>
+<x-import component-from-global-scope="PlayMe.Button" variant="ghost" size="sm" icon="list" disabled="{{yes}}">Painel do set</x-import>
+</header>
+<div style="flex-grow: 1; min-height: 0; overflow: hidden; display: flex; justify-content: center; padding: 40px 32px 0">
+<div style="width: 720px; display: flex; flex-direction: column; gap: 24px">
+<x-import component-from-global-scope="PlayMe.ChatMessage" role="user">Monta um set da Eletro, 1h30, warm up até peak time.</x-import>
+<x-import component-from-global-scope="PlayMe.ChatMessage" role="assistant">
+<x-import component-from-global-scope="PlayMe.ThinkingStatus" activity="reading" verb="Buscando BPM e tom" detail="GetSongBPM + Deezer · 312/548"></x-import>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px">
+<x-import component-from-global-scope="PlayMe.ToolCall" name="spotify_get_playlist_tracks" detail="Eletro · 548 faixas · ISRC lido · 22 com Mixar" status="done"></x-import>
+<x-import component-from-global-scope="PlayMe.ToolCall" name="metadata_lookup" activity="reading" detail="dry run · 312/548" status="running"></x-import>
+</div>
+<section aria-label="Cobertura de metadados" style="display: flex; flex-direction: column; gap: 16px; padding: 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface-raised)">
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span class="label" style="color: var(--ink-subtle)">Mixar</span>
+<span style="font: 500 24px/28px var(--font-mono); font-variant-numeric: tabular-nums">22</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span class="label" style="color: var(--ink-subtle)">Web conferido</span>
+<span style="font: 500 24px/28px var(--font-mono); font-variant-numeric: tabular-nums">241</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span class="label" style="color: var(--ink-subtle)">A validar</span>
+<span style="font: 500 24px/28px var(--font-mono); font-variant-numeric: tabular-nums">38</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span class="label" style="color: var(--ink-subtle)">Pendentes</span>
+<span style="font: 500 24px/28px var(--font-mono); font-variant-numeric: tabular-nums">11</span>
+</div>
+</div>
+<div role="progressbar" aria-label="Faixas consultadas" aria-valuemin="0" aria-valuemax="548" aria-valuenow="312" style="height: 6px; border-radius: 999px; background: var(--surface-sunken); overflow: hidden">
+<div style="width: 57%; height: 6px; border-radius: 999px; background: var(--ink-muted)"></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: center; gap: 8px">
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="warn">A validar</x-import>
+<span style="font-size: 13px; line-height: 20px; color: var(--ink-muted)">BPM diverge entre as fontes ou veio de uma só. Entra marcada; confira antes do envio.</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="danger">Pendente</x-import>
+<span style="font-size: 13px; line-height: 20px; color: var(--ink-muted)">Sem tom em nenhuma fonte. Fica fora do set até você informar.</span>
+</div>
+</div>
+<span style="font-size: 12px; line-height: 16px; color: var(--ink-subtle)">Mixar nunca é sobrescrito. Tom vem só do GetSongBPM. Nenhum áudio é baixado.</span>
+</section>
+</x-import>
+</div>
+</div>
+<div style="display: flex; justify-content: center; padding: 16px 32px 24px">
+<div style="width: 720px; box-shadow: var(--shadow-float); border-radius: 20px">
+<x-import component-from-global-scope="PlayMe.Composer" id="analisando-composer" context="Eletro · 548 faixas" placeholder="Peça ajustes enquanto a análise roda"></x-import>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark', yes: true };
+  }
+}
+</script>
+</body>
+</html>

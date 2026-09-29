@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Play.Me · Início</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="playme-tokens.css">
+<link rel="stylesheet" href="ds/playme/components/bundle.css">
+<script src="ds/playme/components/lib/thinking-orbs.js"></script>
+<script src="ds/playme/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; height: 900px; display: flex; overflow: hidden; background: var(--surface-base); color: var(--ink); font-family: var(--font-sans)">
+<dc-import name="Sidebar" active="nenhum" theme="{{theme}}" hint-size="264px,900px"></dc-import>
+<main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 32px; padding: 0 48px 64px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 20px; text-align: center">
+<x-import component-from-global-scope="PlayMe.AgentOrb" activity="idle" size="{{n64}}"></x-import>
+<h1 class="display" style="margin: 0">Pista cheia.</h1>
+<p style="margin: 0; font-size: 15px; line-height: 24px; color: var(--ink-muted)">Escolha uma playlist e diga o clima do set.</p>
+</div>
+<div style="width: 720px; display: flex; flex-direction: column; gap: 16px">
+<x-import component-from-global-scope="PlayMe.Composer" id="inicio-composer" context="Eletro · 548 faixas" placeholder="Monte um set da Eletro, 1h30, warm up até peak time"></x-import>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center">
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm">Warm up até peak time</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm">Sunrise com energia caindo</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm">Só faixas entre 124 e 126 BPM</x-import>
+</div>
+</div>
+<div style="width: 720px; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); box-sizing: border-box">
+<x-import component-from-global-scope="PlayMe.StatusTag" tone="warn">Jev sem acesso</x-import>
+<span style="flex-grow: 1; font-size: 13px; line-height: 20px; color: var(--ink-muted)">As transições usam o planejador de regras até o early access liberar.</span>
+<x-import component-from-global-scope="PlayMe.Button" variant="ghost" size="sm">Configurar</x-import>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark', n64: 64 };
+  }
+}
+</script>
+</body>
+</html>

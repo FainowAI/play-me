@@ -11,17 +11,18 @@ Uso pessoal, single-user, roda na máquina do usuário (Windows + WSL2). Pasta l
 ```
 1. Usuário pede no chat: "monta um set da Eletro, warm up até peak time"
 2. Spotify API  → lê a playlist (IDs, ISRC, nomes)
-3. Casamento    → cada faixa ↔ arquivo local do usuário (ISRC, fingerprint, fuzzy)
-4. Beat This!   → grade: beats, downbeats, compassos (só faixas com arquivo local)
-5. Extratores   → tom, energia por banda, vocal, seções, frases, cues (Python)
-6. Jev          → decisões tipadas e rápidas sobre as features: tipo de transição,
+3. Metadados    → BPM e tom: Mixar salvo > GetSongBPM + Deezer (cruzados); divergência vira [A VALIDAR]
+4. Casamento    → (opcional, só com arquivo) cada faixa ↔ arquivo local (ISRC, fingerprint, fuzzy)
+5. Beat This!   → (opcional, só com arquivo) grade: beats, downbeats, compassos
+6. Extratores   → (opcional, só com arquivo) tom, energia por banda, vocal, seções, frases, cues
+7. Jev          → (opcional) decisões tipadas e rápidas sobre as features: tipo de transição,
                   nota de compatibilidade por par, pontos de entrada/saída, vetos
-7. Claude       → monta a ordem e a narrativa do set, explica cada transição no chat
-8. Usuário      → revisa no chat (ordem, cards de transição, prévia) e aprova
-9. Spotify API  → cria playlist nova e privada "[DJ MIX] <nome>" (só após aprovação)
+8. Claude       → monta a ordem e a narrativa do set, explica cada transição no chat
+9. Usuário      → revisa no chat (ordem, cards de transição) e aprova
+10. Spotify API → cria playlist nova e privada "[DJ MIX] <nome>" (só após aprovação)
 ```
 
-Faixa sem arquivo local não passa pelas etapas 4–6: usa dado manual (Mixar, web) e é marcada como "sem análise de áudio" no chat.
+MVP por metadados (D22, ADR 0002): as etapas 4–7 são a trilha de áudio, opcional e fora do caminho crítico. Faixa sem arquivo usa só metadados e é marcada como "sem análise de áudio" no chat. Nenhum áudio de fora, nem prévia de 30 s (D04).
 
 **Quadro do projeto (fonte central):** https://claude.ai/artifact/JEd8bN1irubJJigj5nKziX
 Toda documentação, planejamento, decisão e set gerado vive no quadro. O Claude Code não publica no quadro: ao criar ou mudar qualquer documento do repositório (`CLAUDE.md`, `docs/*`), registre a mudança em `docs/decisoes.md` e avise ao final da tarefa que o quadro precisa ser sincronizado. A sincronização é feita no projeto "DJ Mix Builder" do Claude.
@@ -57,7 +58,7 @@ Play.me/
 │  ├─ sets/                   # sets gerados (ordem, notas, pontos fracos)
 │  └─ decisions/              # ADRs curtos, um por decisão
 ├─ apps/
-│  ├─ web/                    # UI estilo chat para DJ — layout desenhado no Google Stitch
+│  ├─ web/                    # UI estilo chat para DJ — telas em design/telas/ (D23)
 │  └─ server/                 # backend local Node/TS: Claude Agent SDK + SSE para a UI + gate de aprovação
 ├─ packages/
 │  └─ mcp-server/             # spotify-dj-mcp-server (TypeScript) — já existe, será ampliado
@@ -84,7 +85,8 @@ Play.me/
 ├─ design/
 │  ├─ DESIGN.md               # design system Play.Me (fonte da UI)
 │  ├─ playme-tokens.css       # tokens: cor, tipo, espaço, raio, movimento (dark e light)
-│  └─ stitch/                 # telas exportadas do Stitch
+│  ├─ telas/                  # cópia do canvas "Play.Me · Telas do MVP" (.dc.html + canvas.json)
+│  └─ ds/                     # componentes do design system (referência para o React)
 └─ data/                      # gitignored: dj.sqlite, cache de análise, stems, prévias
 ```
 
@@ -107,7 +109,8 @@ Play.me/
 | Matching | mutagen (tags/ISRC), Chromaprint `fpcalc` + AcoustID, fuzzy título/artista/duração |
 | Render | pedalboard (GPLv3) + Rubber Band para time-stretch |
 | Export | pyrekordbox ou ElementTree para Rekordbox XML |
-| Design da UI | Google Stitch → DESIGN.md + telas → Stitch MCP / skills no Claude Code |
+| Metadados (MVP) | GetSongBPM (BPM, tom) + Deezer (BPM por ISRC), cruzados com o Mixar; cache em `~/.spotify-dj-mcp/metadata-cache.json` |
+| Design da UI | Canvas do Claude → `design/telas/` + DESIGN.md → Claude Code |
 | UI | React, Vite, TypeScript, Tailwind; chat com streaming (SSE); canvas próprio para forma de onda em 3 bandas |
 
 ### Licenças que importam
@@ -271,10 +274,9 @@ Com 137 faixas são ~18 mil pares ordenados: Jev pontua em lote; Claude trabalha
 - Ações rápidas: "reordenar", "trocar faixa", "mais energia aqui", "enviar ao Spotify".
 - Card de aprovação antes de criar a playlist.
 
-**Design no Google Stitch:**
-- O design system já existe: `design/DESIGN.md` e `design/playme-tokens.css`. As telas são desenhadas no Stitch a partir dele e exportadas para `design/stitch/`.
-- No Claude Code, usar o Stitch MCP ou as skills oficiais (`google-labs-code/stitch-skills`) para ler o design e gerar os componentes React. O `DESIGN.md` é a fonte dos tokens; a UI não inventa cor, fonte ou espaçamento fora dele.
-- Telas mínimas para desenhar: chat vazio (início), chat com set proposto, card de transição expandido, painel do set, card de aprovação, estado "analisando faixas".
+**Design no canvas (D23, ADR 0003):**
+- O design system existe em `design/DESIGN.md` e `design/playme-tokens.css`. As telas vêm do canvas "Play.Me · Telas do MVP", com cópia em `design/telas/`; os componentes, em `design/ds/`. Lista e fluxo das telas: `design/telas-mvp.md` (D21).
+- O React implementa lendo `design/telas/*.dc.html` como referência de layout e `design/ds/` como referência de componentes. O `DESIGN.md` segue como fonte dos tokens; a UI não inventa cor, fonte ou espaçamento fora dele.
 
 ---
 
@@ -291,10 +293,12 @@ Com 137 faixas são ~18 mil pares ordenados: Jev pontua em lote; Claude trabalha
 
 ## MCP: ferramentas novas
 
-Manter as 11 atuais. Adicionar, todas lendo do analisador via HTTP local:
+Manter as 11 atuais. Adicionar (as de metadados chamam as APIs direto; as demais leem do analisador via HTTP local e pertencem à trilha de áudio):
 
 | Ferramenta | Função |
 |---|---|
+| `metadata_lookup` | (Fase M) Busca BPM e tom no GetSongBPM e no Deezer, mostra o que cada fonte trouxe e o que seria salvo; só grava com `dry_run=false` |
+| `metadata_coverage` | (Fase M) Cobertura de uma playlist por origem: Mixar, web, [A VALIDAR], pendente |
 | `library_match_status` | Quantas faixas de uma playlist têm arquivo local casado e análise pronta |
 | `library_match_confirm` | Confirma ou corrige um casamento Spotify ↔ arquivo |
 | `analysis_request` | Enfileira análise de faixas com arquivo local |
@@ -322,14 +326,11 @@ O MCP nunca roda análise pesada dentro do processo stdio.
 
 Cada fase fecha com critério de aceite verificável. Não pular.
 
-- **Fase 0 — Protótipo da grade.** Beat This! em 10 faixas da playlist Eletro. Critério: BPM a ±1 do valor do Mixar em pelo menos 9 de 10; downbeats conferidos no Sonic Visualiser em 3 faixas.
-- **Fase 1 — Casamento.** Ler playlist do Spotify, indexar pasta de música, casar por ISRC → fingerprint → fuzzy. Critério: relatório de cobertura e casamentos com confiança.
-- **Fase 2 — Análise básica.** grid, bars, loudness, bands, key. Critério: tom com confiança; comparação com os valores do Mixar salvos no MCP.
-- **Fase 3 — Análise profunda.** stems, tonal, structure, phrases, cues, energy. Critério: cues de entrada e saída plausíveis em 8 de 10 faixas, conferidos no ouvido.
-- **Fase 4 — Planejador + MCP.** Regras, vetos, `TransitionPlan`, ferramentas novas. Critério: plano válido para todos os pares consecutivos do set atual.
-- **Fase 5 — UI.** Biblioteca, faixa, editor de transição.
-- **Fase 6 — Execução.** Prévia renderizada, export Rekordbox, guia do Mix.
-- **Fase 7 — Calibração.** Ajustar regras e pesos com as notas de `transition_feedback`.
+- **Fase M — Metadados (agora).** BPM e tom de todas as faixas por GetSongBPM + Deezer, cruzados com o Mixar (`metadata_lookup`, `metadata_coverage`). Critério: BPM confere com o Mixar em ≥ 90 % das faixas encontradas; acerto de tom e cobertura registrados no ADR 0002.
+- **Fase P — Planejador por metadados.** `TransitionPlan` sem estrutura: tipo e comprimento por BPM, tom e energia, mais o guia do Mix.
+- **Fase C — Chat.** `apps/server` com Agent SDK e `apps/web` com as telas da D21.
+- **Fase K — Calibração.** Ajustar regras e pesos com as notas de `transition_feedback`.
+- **Trilha de áudio (opcional, quando houver arquivos):** antigas Fases 0 a 3 — protótipo da grade (Beat This!, suspenso em 28/09, ver prompt 02), casamento, análise básica, análise profunda.
 
 ---
 
@@ -343,8 +344,10 @@ Cada fase fecha com critério de aceite verificável. Não pular.
 
 ## Estado atual
 
-- `packages/mcp-server`: cópia do MCP em uso (original em `Desktop\mcps\spotify-dj-mcp-server`, que segue ativo no Claude Desktop até a validação no prompt 01). 11 ferramentas, OAuth PKCE, análise manual (BPM/Camelot do Mixar), montador de set por busca em feixe, criação de playlist `[DJ MIX]` privada.
-- Análises manuais da playlist Eletro já salvas no store do MCP (`~/.spotify-dj-mcp/analysis.json`): usar como verdade de referência na Fase 0 e na Fase 2.
+- Rota nova (D22, ADR 0002): MVP por metadados. Fase M em andamento (prompt 03); depois Fase P.
+- `packages/mcp-server`: cópia do MCP em uso (original em `Desktop\mcps\spotify-dj-mcp-server`, que segue ativo no Claude Desktop). 11 ferramentas, OAuth PKCE, análise manual (BPM/Camelot do Mixar), montador de set por busca em feixe, criação de playlist `[DJ MIX]` privada. A Fase M acrescenta `metadata_lookup` e `metadata_coverage`.
+- Análises manuais da playlist Eletro já salvas no store do MCP (`~/.spotify-dj-mcp/analysis.json`): verdade de referência para validar os metadados da web. Entrada do Mixar nunca é sobrescrita.
+- `services/analyzer`: `decode.py` e `grid.py` prontos e testados na parte pura; Beat This! e PyTorch não instalados (trilha de áudio suspensa). ffmpeg ainda não está no WSL.
 - Jev: pesquisado, ainda sem acesso confirmado ao early access.
-- UI: a ser desenhada no Google Stitch antes de qualquer código de front.
+- UI: telas aprovadas no canvas (D21, D23), cópia em `design/telas/`. Nenhum código de front ainda (Fase C).
 - Nome do software: Play.Me. Design system pronto em `design/DESIGN.md` e `design/playme-tokens.css` (critérios de aceite da UI na seção 9 do DESIGN.md).

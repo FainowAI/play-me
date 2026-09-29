@@ -1,6 +1,6 @@
 # Play.Me — DESIGN.md
 
-Referência visual para o Google Stitch e para o Claude Code implementarem a UI do Play.Me (React + Vite + TypeScript). Fonte da verdade dos valores: `playme-tokens.json` / `playme-tokens.css`. Design system navegável: artifact "Play.Me" (Design System).
+Referência visual para o Claude Code implementar a UI do Play.Me (React + Vite + TypeScript). Fonte da verdade dos valores: `playme-tokens.json` / `playme-tokens.css`. Design system navegável: artifact "Play.Me" (Design System), com os componentes em `design/ds/`. Telas: canvas "Play.Me · Telas do MVP", com cópia em `design/telas/` (D23; o Google Stitch saiu).
 
 ## 1. Conceito
 
@@ -70,7 +70,7 @@ Matiz = círculo de quintas: começa em ciano no 1 e avança 30° por número; v
 
 ### Energia 1–10 (sempre com o número)
 
-#433E7B · #395493 · #1A6DA5 · #0087AD · #009FAC · #00B6A2 · #3BC98F · #84D777 · #C3E15B · #FFE648
+Rampa 1 → 10: #433E7B · #395493 · #1A6DA5 · #0087AD · #009FAC · #00B6A2 · #3BC98F · #84D777 · #C3E15B · #FFE648
 
 ### Seções da faixa (fill; vocal = hachura diagonal por cima)
 
@@ -102,6 +102,30 @@ intro #61AFDA · groove #7F8699 · build #F5AE39 · drop #FF6557 · break #58C8A
 - Raio: pill 999 (todo botão) · 20 (cards, bolhas, composer) · 12 (linhas, inputs, menus) · 6 (chips) · 4 (segmentos).
 - Sombra só em flutuante: `0 16px 40px rgba(0,0,0,.55)` (dark). Cards planos com `line` 1px.
 - Movimento: 120ms hover · 200ms abrir · 400ms reordenar; `cubic-bezier(0.4,0,0.2,1)`. Pressed = scale(0.97). Respeitar `prefers-reduced-motion`.
+- Única animação contínua: o orb de pensamento (4.1). Fora dele, nada gira, quica ou brilha.
+
+### 4.1 Pensamento (orbs)
+
+O estado "o agente está trabalhando" usa **thinking-orbs** (`npm install thinking-orbs`, MIT, Jakub Antalik, https://libraries.dev/orbs). Esfera de pontos em canvas 2D, tinta monocromática, segue `data-theme` sozinha, quadro estático com `prefers-reduced-motion`, pausa fora da tela.
+
+Envolver em `AgentOrb` (`apps/web/src/components/AgentOrb.tsx`) com o mapa abaixo. O `ToolCall` escolhe a atividade pelo nome da ferramenta.
+
+| Atividade | Estado do orb | Ferramentas / momento |
+|---|---|---|
+| idle | breathing | Tela vazia; gate aguardando aprovação |
+| reading | searching | `spotify_get_playlist_tracks`, `spotify_search_tracks`, busca de BPM |
+| matching | connecting | `library_match_*` |
+| listening | listening | `analysis_*` (Beat This!, extratores) |
+| scoring | solving | `dj_score_transition`, `dj_evaluate_order`, Jev |
+| planning | weaving | `transition_plan` |
+| composing | composing | `dj_build_set`, `set_build_deep`, Claude escrevendo |
+| shipping | shaping | `spotify_create_playlist_from_order`, `export_*` |
+| working | working | Qualquer outra |
+
+- Tamanhos: 64 só na tela vazia · 32 no cabeçalho do painel do set recalculando · 20 no `ThinkingStatus`, no `ToolCall` rodando e na sidebar.
+- `ThinkingStatus`: orb 20 + verbo no gerúndio (`ink-muted`) + progresso real em mono (`ink-subtle`): "Analisando o áudio · 12/42 faixas". Abre a resposta e some quando o texto começa a chegar.
+- Sem `color`, sem `gravity`, `speed` 1. Um orb animado por região. Terminou: sai o orb, entra o ícone de estado.
+- Proibido: spinner, barra indeterminada, "Pensando…" genérico.
 
 ## 5. Layout do app
 
@@ -118,7 +142,7 @@ intro #61AFDA · groove #7F8699 · build #F5AE39 · drop #FF6557 · break #58C8A
 ```
 
 - < 1100px: painel do set vira gaveta à direita. < 720px: sidebar também vira gaveta; gutter 16px.
-- Tela vazia: `display` "Pista cheia." + body-sm "Escolha uma playlist e diga o clima do set." + 3 sugestões em botão outline.
+- Tela vazia: `AgentOrb` 64 em `idle` + `display` "Pista cheia." + body-sm "Escolha uma playlist e diga o clima do set." + 3 sugestões em botão outline.
 
 ## 6. Componentes
 
@@ -134,7 +158,9 @@ intro #61AFDA · groove #7F8699 · build #F5AE39 · drop #FF6557 · break #58C8A
 | SetArc | Linha neutra da energia por faixa, área signal-soft, grade em 3/5/7/9, faixa atual em signal |
 | CamelotWheel | Dois anéis (B fora, A dentro), 12 no topo; ativo com contorno ink, vizinhos compatíveis cheios, resto 18% |
 | ChatMessage | Usuário: bolha surface-overlay à direita. Play.Me: sem bolha, label "PLAY.ME" |
-| ToolCall | Pílula com ícone de estado, nome mono, detalhe, estado (rodando · concluído · falhou · aguardando você) |
+| ToolCall | Pílula com ícone de estado, nome mono, detalhe, estado (rodando · concluído · falhou · aguardando você). Rodando = `AgentOrb` 20 da atividade da ferramenta |
+| AgentOrb | `ThinkingOrb` do thinking-orbs com o mapa atividade → estado; 64/32/20; monocromático |
+| ThinkingStatus | Orb 20 + verbo + progresso em mono; `role="status"` |
 | Composer | Card raio 20 surface-overlay, textarea, pílula de contexto da playlist, botão enviar primary sm |
 | ApprovalGate | Card com borda signal, label signal "APROVAÇÃO NECESSÁRIA", texto que diz que a original não muda, botões "Aprovar e criar" (signal) e "Revisar ordem" (ghost) |
 
@@ -159,3 +185,5 @@ Português brasileiro, direto, vocabulário de cabine. Resultado primeiro. Núme
 4. `signal` aparece em no máximo um botão por tela e só no `ApprovalGate`.
 5. Nenhuma chamada a `spotify_create_playlist_from_order` acontece sem clique em "Aprovar e criar".
 6. A 390px de largura, nada rola na horizontal e o composer continua visível.
+7. Toda ferramenta em execução mostra `AgentOrb` com a atividade de `activityForTool`; nenhum spinner no código (`grep -ri spinner apps/web/src` vazio).
+8. Com `prefers-reduced-motion: reduce`, nenhum orb anima.

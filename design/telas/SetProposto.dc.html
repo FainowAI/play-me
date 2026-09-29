@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Play.Me · Set proposto</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="playme-tokens.css">
+<link rel="stylesheet" href="ds/playme/components/bundle.css">
+<script src="ds/playme/components/lib/thinking-orbs.js"></script>
+<script src="ds/playme/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; height: 900px; display: flex; overflow: hidden; background: var(--surface-base); color: var(--ink); font-family: var(--font-sans)">
+<dc-import name="Sidebar" active="eletro" theme="{{theme}}" hint-size="264px,900px"></dc-import>
+<main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+<header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 24px; border-bottom: 1px solid var(--line)">
+<span style="font-size: 15px; line-height: 24px; font-weight: 500">Eletro · warm up → peak</span>
+<span style="font: 500 11px/16px var(--font-mono); padding: 2px 6px; border-radius: 6px; background: var(--surface-overlay); color: var(--ink-muted)">V1</span>
+<span style="flex-grow: 1"></span>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm" icon="list">Painel do set</x-import>
+</header>
+<div style="flex-grow: 1; min-height: 0; overflow: hidden; display: flex; justify-content: center; padding: 32px 28px 0">
+<div style="width: 720px; display: flex; flex-direction: column; gap: 24px">
+<x-import component-from-global-scope="PlayMe.ChatMessage" role="user">Monta um set da Eletro, 1h30, warm up até peak time.</x-import>
+<x-import component-from-global-scope="PlayMe.ChatMessage" role="assistant">
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<x-import component-from-global-scope="PlayMe.ToolCall" name="dj_build_set" detail="21 faixas · curva classic" status="done"></x-import>
+<x-import component-from-global-scope="PlayMe.ToolCall" name="dj_evaluate_order" detail="nota média 0,84" status="done"></x-import>
+</div>
+<p>Set de 21 faixas em seis seções, no painel ao lado. Abre em 7B a 122 BPM e chega ao pico em Paranoia, 12A a 130.</p>
+<p>A passagem mais arriscada é a saída do clímax: cai 6 BPM de uma vez.</p>
+<x-import component-from-global-scope="PlayMe.TransitionCard" index="14 → 15" from="{{a}}" to="{{b}}" relation="{{rel}}" delta-bpm="{{dBpm}}" delta-energy="{{dE}}" type="Echo out" length-bars="{{len}}" reason="A sai em echo out no breakdown de Paranoia; The Sun Can't Compare entra limpa a 124. A relativa segura a harmonia na queda de energia."></x-import>
+<p style="color: var(--ink-muted)">Fora do set: Cruisin' quebra o fechamento a 133 BPM, e This Rhythm está sem BPM confiável.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm">Respiro entre 12 e 14</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm">Trocar a faixa 15</x-import>
+<x-import component-from-global-scope="PlayMe.Button" variant="outline" size="sm">Ver as 20 transições</x-import>
+</div>
+</x-import>
+</div>
+</div>
+<div style="display: flex; justify-content: center; padding: 16px 28px 24px">
+<div style="width: 720px; box-shadow: var(--shadow-float); border-radius: 20px">
+<x-import component-from-global-scope="PlayMe.Composer" id="set-composer" context="Eletro · set V1" placeholder="Peça um ajuste: &#34;mais energia no meio&#34;, &#34;troca a faixa 7&#34;"></x-import>
+</div>
+</div>
+</main>
+<dc-import name="SetPanel" tab="ordem" version="V1" status="rascunho" theme="{{theme}}" hint-size="400px,900px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      theme: this.props.theme ?? 'dark',
+      a: { title: 'Paranoia', bpm: 130, camelot: '12A' },
+      b: { title: "The Sun Can't Compare", bpm: 124, camelot: '12B' },
+      rel: { tone: 'warn', label: 'Segura · relativa · −6 BPM' },
+      dBpm: -6, dE: -4, len: 8
+    };
+  }
+}
+</script>
+</body>
+</html>

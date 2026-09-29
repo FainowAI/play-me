@@ -1,6 +1,6 @@
 # Play.Me
 
-Sistema local que transforma playlists do Spotify em sets de DJ. Você conversa num chat de DJ; o Claude (Agent SDK, local) usa a análise de áudio (Beat This! + extratores) e as decisões do Jev para propor a ordem e as transições. No MVP, o set aprovado vira uma playlist nova e privada no Spotify.
+Sistema local que transforma playlists do Spotify em sets de DJ. Você conversa num chat de DJ; o Claude (Agent SDK, local) usa BPM e tom por metadados (Mixar, GetSongBPM, Deezer) para propor a ordem e as transições; a análise de áudio é trilha opcional para faixas com arquivo. No MVP, o set aprovado vira uma playlist nova e privada no Spotify.
 
 - Arquitetura, regras e fases: `CLAUDE.md`
 - Decisões e pendências: `docs/decisoes.md`
@@ -18,11 +18,16 @@ Sistema local que transforma playlists do Spotify em sets de DJ. Você conversa 
 ## Estrutura
 
 ```
-apps/web          chat de DJ (React + Vite + TS), a partir das telas do Stitch
+apps/web          chat de DJ (React + Vite + TS), a partir das telas em design/telas/
 apps/server       backend local com Claude Agent SDK
 packages/         mcp-server (spotify-dj) e pacotes compartilhados
 services/analyzer análise de áudio em Python (WSL2/Docker)
-design/           DESIGN.md, tokens e telas exportadas do Stitch
+design/           DESIGN.md, tokens, telas (design/telas/) e componentes (design/ds/)
 docs/             pesquisa, decisões, sets, prompts
 data/             banco e caches locais (fora do git)
 ```
+
+## Fontes de dados
+
+- BPM e tom: [GetSongBPM](https://getsongbpm.com) (API com backlink exigido) e API pública do Deezer, cruzados com o Mixar do Spotify.
+- Catálogo e playlists: Spotify Web API. Nenhum áudio vem de fora (D04).

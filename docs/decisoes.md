@@ -25,19 +25,22 @@ Toda decisão nova entra aqui e no quadro do projeto: https://claude.ai/artifact
 | D17 | 28/09/2026 | npm workspaces na raiz (`packages/*`, `apps/*`) com lockfile único na raiz, semeado do lock antigo do MCP (SDK MCP fica em 1.30.1). `tsconfig.base.json` com as flags comuns; o tsconfig do MCP estende a base e mantém os caminhos (config efetiva idêntica, conferida com `tsc --showConfig`). Único ajuste no MCP: script `typecheck`. `npm test` compila antes (`pretest`). | Fundação sem mudar o comportamento do MCP: um lock novo subiria o SDK para 1.31.0. |
 | D18 | 28/09/2026 | WSL segue em Ubuntu 22.04; Python do analisador é 3.12 via uv, venv em `~/.venvs/playme-analyzer`. Ver ADR 0001. | O 22.04 só tem Python 3.10 (e 3.11 rc); uv não precisa de sudo nem mexe no sistema. |
 | D19 | 28/09/2026 | API do analisador em `services/analyzer/analyzer/api.py` (não na raiz do serviço), escutando só em `127.0.0.1:8765` (`ANALYZER_PORT`). O teste chama a função da rota direto; o `curl` cobre o HTTP. | Código num pacote só; evita `httpx` só para o TestClient. |
+| D20 | 28/09/2026 | Orb de pensamento da biblioteca thinking-orbs (MIT), encapsulado no `AgentOrb`: único movimento contínuo da UI, mapa atividade → estado (DESIGN.md 4.1). | Pedido do usuário; MIT, canvas 2D leve, segue `data-theme` e `prefers-reduced-motion`. |
+| D21 | 28/09/2026 | Telas do MVP aprovadas (`design/telas-mvp.md`): chat único com painel do set versionado; Início, Conversa, Analisando, Set proposto, Aprovação, Enviado + guia do Mix, Transição expandida, Faixa, Configurações. | Fluxo simples e maleável como Claude e ChatGPT. |
+| D22 | 28/09/2026 | MVP por metadados; análise de áudio vira trilha opcional (ADR 0002). | Comprar 527 faixas é inviável. |
+| D23 | 29/09/2026 | Telas no canvas "Play.Me · Telas do MVP" (cópia em `design/telas/`), no lugar do Google Stitch; revisa a D09 (ADR 0003). | Decisão do usuário; o canvas já usa os componentes do design system. |
 
 ## Pendentes
 
 | # | Pergunta | Recomendação |
 |---|---|---|
 | P02 | Acesso ao early access do Jev e API key. | Entrar na fila já; construir com regras e plugar o Jev numa sprint própria. |
-| P03 | Escopo do v1. | Chat + análise + set proposto + cards de transição com guia do Mix + aprovação → playlist no Spotify. Fora: render no app, motor em tempo real, export Rekordbox, editor de curvas. |
+| P03 | Escopo do v1. | v1 = chat + BPM e tom por metadados + set + transições por metadados com guia do Mix + aprovação. Fora: render no app, motor em tempo real, export Rekordbox, editor de curvas, estrutura por compasso (trilha de áudio opcional). |
 | P04 | Prazo e ritmo. | 4 semanas, sprints de 1 semana, telas do Stitch em paralelo na semana 1. |
 | P05 | Rodada 2 do briefing: estados do set, uso pessoal ou produto. | A definir na rodada 2. |
+| P09 | Onde fica o backlink público do GetSongBPM. | A definir; os termos da API exigem link público para getsongbpm.com (ADR 0002). |
 
-## Próximo passo (28/09/2026)
+## Próximo passo (29/09/2026)
 
-1. Prompt 01 no Claude Code, na pasta Play.me: fundação do repositório (git, workspace, MCP validado, esqueleto do analisador no WSL2, registro do ambiente).
-2. Prompt 02: Fase 0, Beat This! em 10 faixas. Precisa dos arquivos de áudio.
-3. Telas no Stitch a partir do DESIGN.md, em paralelo com a Fase 0.
-4. Fechar P02–P05 e gerar a EAP.
+1. Prompt 03, Parte D: validar a Fase M (metadata_lookup em dry run nas faixas da Eletro com Mixar e nas 50 primeiras) e registrar os números no ADR 0002.
+2. Fase P: planejador por metadados.
