@@ -1,3 +1,5 @@
+Status: suspenso em 28/09/2026 (D22). decode.py e grid.py prontos e testados na parte pura; falta rodar o Beat This! com 10 arquivos próprios.
+
 # Prompt 02 — Fase 0: protótipo da grade (Beat This!)
 
 Cole no Claude Code aberto em `C:\Users\Antônio\Desktop\Play.me`, depois que o prompt 01 estiver concluído e aceito.
