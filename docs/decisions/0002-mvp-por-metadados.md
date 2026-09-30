@@ -32,4 +32,37 @@ Data: 28/09/2026 · Decisão D22 · Suspende a Fase 0 (prompt 02)
 
 ## Resultados
 
-_(preenchido na Parte D do prompt 03)_
+Validação de 29/09/2026 (`metadata_lookup` em dry run, playlist Eletro `1RWDWS3EyRn8vsGzLLjczl`, 557 faixas). Nada foi gravado: `analysis.json` idêntico ao backup (sha256 `f76f68fa…`). Nenhum áudio baixado; o Deezer só recebeu chamadas `/track/isrc:`.
+
+### Faixas com Mixar (22)
+
+| Medida | Resultado |
+|---|---|
+| GetSongBPM achou (título + artista) | 1 de 22 |
+| Deezer achou pelo ISRC | 22 de 22, mas com BPM > 0 em só 1 |
+| Faixas com algum BPM da web | 2 de 22 |
+| BPM confere com o Mixar (±1 ou metade/dobro) | 2 de 2 (You Were Right: 122 × 122; Lonesome: 124,16 × 124) |
+| Tom exato | 0 de 1 |
+| Tom relativo / ±1 | 1 de 1 relativo (GetSongBPM Fm = 4A × Mixar 4B) |
+
+O critério "BPM confere em ≥ 90 % das encontradas" passa (2 de 2), mas com n = 2 o número não diz nada sobre a precisão.
+
+### 50 primeiras faixas da Eletro (nenhuma tem Mixar)
+
+| Medida | Resultado |
+|---|---|
+| GetSongBPM achou | 1 de 50 (com BPM e tom) |
+| Deezer achou pelo ISRC | 49 de 50, BPM > 0 em 0 |
+| Seria salvo | 1 (com [A VALIDAR]: BPM de fonte única) |
+| Salvo como "web" conferido | 0 |
+| Pendente (sem BPM em nenhuma fonte) | 49 |
+
+A única faixa que seria salva (Innerbloom - Radio Edit, 137 BPM, Gm, só do GetSongBPM) não foi conferida com nenhuma outra fonte.
+
+### Leitura
+
+- Cobertura gravável (BPM **e** tom, que o store exige): 1 de 22 nas faixas com Mixar e 1 de 50 nas primeiras da Eletro, ou seja, 2 % a 5 %. Faixas com algum BPM da web, mesmo sem tom: 2 de 22 e 1 de 50. O MVP por metadados, como está definido aqui, não cobre a playlist.
+- `metadata_coverage` na Eletro hoje: 557 faixas, 22 com Mixar, 0 web, 0 [A VALIDAR], 535 pendentes.
+- O Deezer quase nunca preenche o `bpm` neste catálogo (1 de 71 faixas encontradas pelo ISRC, em 72 consultadas). Na prática, o GetSongBPM é a única fonte, e cobre pouco música eletrônica recente.
+- Esse é o dado para decidir o P03. Não foi feita nenhuma escolha aqui.
+- Ajuste feito durante a validação: quando a busca por título + artista volta vazia, o cliente do GetSongBPM tenta a busca só pelo título e confere o artista no casamento. Motivo: a base grava "RÜFÜS" em vez de "RÜFÜS DU SOL". Os números acima já usam essa versão. O casamento por "contém" exige pelo menos 4 letras, para um artista curto não casar por acaso.

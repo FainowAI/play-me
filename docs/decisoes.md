@@ -42,5 +42,5 @@ Toda decisão nova entra aqui e no quadro do projeto: https://claude.ai/artifact
 
 ## Próximo passo (29/09/2026)
 
-1. Prompt 03, Parte D: validar a Fase M (metadata_lookup em dry run nas faixas da Eletro com Mixar e nas 50 primeiras) e registrar os números no ADR 0002.
+1. Decidir o P03 com os resultados da Fase M (ADR 0002, seção Resultados): a web cobriu 1 de 50 faixas da Eletro, e o Deezer não traz BPM neste catálogo.
 2. Fase P: planejador por metadados.
