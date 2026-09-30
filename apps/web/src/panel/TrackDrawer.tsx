@@ -33,7 +33,8 @@ function CorrectionForm({ track, title, onSend, onClose }: { track: SnapshotTrac
   const uid = useId();
   const [bpm, setBpm] = useState(String(track.bpm));
   const [tom, setTom] = useState(track.camelot);
-  const [energy, setEnergy] = useState(track.energy === null ? "" : String(track.energy));
+  // ponytail: energia estimada (derivada da ReccoBeats) não vira valor inicial: corrigir só o BPM não deve gravá-la como manual
+  const [energy, setEnergy] = useState(track.energy === null || track.energy_estimated ? "" : String(track.energy));
   const [tried, setTried] = useState(false);
   const parsed = parseCorrection({ bpm, key: tom, energy });
   // os erros só aparecem depois da primeira tentativa e somem assim que o campo fica válido
@@ -148,7 +149,7 @@ export function TrackDrawer({ version, trackId, onClose, onSend }: TrackDrawerPr
           <StatusTag tone={src.tone}>{src.tag}</StatusTag>
         </Source>
         {t.energy !== null ? (
-          <Source name="Energia" text="Estimativa; energy da ReccoBeats de apoio">
+          <Source name="Energia" text={t.energy_estimated ? "Estimativa da ReccoBeats (0–1 → 1–10)" : "Estimativa; energy da ReccoBeats de apoio"}>
             <StatusTag tone="neutral">Estimado</StatusTag>
           </Source>
         ) : (

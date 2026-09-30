@@ -17,6 +17,7 @@
     "test:server": "node dist/tests/server.test.js",
     "test:metadata": "node dist/tests/metadata.test.js",
     "test:planner": "node dist/tests/planner.test.js",
+    "test:jev": "node dist/tests/jev.test.js",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "engines": {

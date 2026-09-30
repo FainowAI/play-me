@@ -89,13 +89,13 @@ Legenda: ✅ feito · ⬜ a fazer.
       6.2.1 ✅ Tela Enviado + aba Guia do Mix; status enviado com link
   7. Calibração e Jev (Fase K)
     7.1 Notas
-      7.1.1 ⬜ Nota 1–5 por transição (transition_feedback)
+      7.1.1 ✅ Nota 1–5 por transição (transition_feedback)
     7.2 Jev
-      7.2.1 ⬜ Validar acesso e SDK oficial (typesafe.ai)
-      7.2.2 ⬜ Cliente com fallback de regras e registro de chamadas
-      7.2.3 ⬜ Concordância Jev × regras × suas notas em 20 pares
+      7.2.1 ✅ Validar acesso e SDK oficial (typesafe.ai)
+      7.2.2 ✅ Cliente com fallback de regras e registro de chamadas
+      7.2.3 ✅ Concordância Jev × regras × suas notas em 20 pares
     7.3 Ajuste
-      7.3.1 ⬜ Recalibrar regras e pesos com as notas
+      7.3.1 🟡 Recalibrar regras e pesos com as notas (mecanismo pronto; espera notas reais)
 ```
 
 Fora da EAP do MVP (backlog): trilha de áudio (Fases 0 a 3 antigas: Beat This!, extratores, casamento de arquivos), prévia renderizada, export Rekordbox, set tocando no app, busca e comandos (⌘K), biblioteca em lote.

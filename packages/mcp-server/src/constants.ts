@@ -20,6 +20,7 @@ export const LIMITS = {
   searchMax: 10, // GET /search (reduzido de 50 para 10)
   itemsPerWrite: 100, // POST /playlists/{id}/items
   maxTracksPerSet: 150,
+  maxPlaylistRead: 600, // dj_build_set com duration_minutes/max_tracks lê a playlist inteira (P10)
   maxAnalysisBatch: 200,
 } as const;
 
@@ -55,3 +56,10 @@ export const ECHO_MAX_HARMONIC = 0.18;
 
 /** Nota geral abaixo da qual a transição entra no relatório de pontos fracos. */
 export const WEAK_TRANSITION_SCORE = 0.62;
+
+/** Jev (TypeSafe, D28): fetch puro, sem SDK. Chave e limiar vêm do ambiente (.env do backend). */
+export const JEV_URL = "https://api.typesafe.ai/v1/systemone";
+export const JEV_MODEL = "jev-latest";
+export const JEV_TIMEOUT_MS = 10_000;
+export const JEV_DEFAULT_MIN_CONFIDENCE = 0.7;
+export const JEV_COMPARE_PAIRS = { default: 20, max: 40 } as const;

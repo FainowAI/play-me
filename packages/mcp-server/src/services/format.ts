@@ -1,5 +1,5 @@
 import { CHARACTER_LIMIT } from "../constants.js";
-import type { SetResult, SpotifyTrackSummary, TrackAnalysis } from "../types.js";
+import type { SetPosition, SetResult, SpotifyTrackSummary, TrackAnalysis } from "../types.js";
 import { ResponseFormat } from "../types.js";
 
 export interface ToolResult {
@@ -41,7 +41,7 @@ export function formatDuration(ms: number | null): string {
 export function trackLine(track: SpotifyTrackSummary, analysis?: TrackAnalysis): string {
   const artists = track.artists.join(", ") || "artista desconhecido";
   const data = analysis
-    ? ` · ${analysis.bpm} BPM · ${analysis.camelot}${analysis.energy !== undefined ? ` · E${analysis.energy}` : ""}`
+    ? ` · ${analysis.bpm} BPM · ${analysis.camelot}${analysis.energy !== undefined ? ` · E${analysis.energy}${analysis.energy_estimated ? "*" : ""}` : ""}`
     : " · sem análise";
   const local = track.is_local ? " · arquivo local (fora do alcance da API)" : "";
   return `${track.position + 1}. ${track.name} — ${artists} (${formatDuration(track.duration_ms)})${data}${local} · id: ${track.id ?? "n/a"}`;
@@ -49,9 +49,13 @@ export function trackLine(track: SpotifyTrackSummary, analysis?: TrackAnalysis):
 
 const TYPE_PT = { blend: "blend", bass_swap: "troca de grave", filter: "filtro", echo_out: "echo out" } as const;
 
+/** "*" marca energia estimada (P12: derivada do energy da ReccoBeats), não informada pelo Mixar ou pelo usuário. */
+const star = (position?: SetPosition): string => (position?.energy_estimated ? "*" : "");
+
 export function setToMarkdown(result: SetResult): string {
   const lines: string[] = [];
-  lines.push(`# Set proposto · curva "${result.curve}" · nota média ${result.average_score}`);
+  const minutes = typeof result.duration_ms === "number" ? ` · ${Math.round(result.duration_ms / 60_000)} min` : "";
+  lines.push(`# Set proposto · ${result.order.length} faixas${minutes} · curva "${result.curve}" · nota média ${result.average_score}`);
   lines.push("");
 
   let currentSection = "";
@@ -65,15 +69,20 @@ export function setToMarkdown(result: SetResult): string {
       if (t) {
         const bpmDelta = t.bpm_diff > 0 ? `+${t.bpm_diff}` : `${t.bpm_diff}`;
         const energy =
-          t.energy_from !== null && t.energy_to !== null ? ` · E${t.energy_from}→E${t.energy_to}` : "";
+          t.energy_from !== null && t.energy_to !== null
+            ? ` · E${t.energy_from}${star(result.order[index - 1])}→E${t.energy_to}${star(position)}`
+            : "";
         lines.push(
           `  ↳ ${t.camelot_from}→${t.camelot_to} ${t.harmonic_relation} (${t.harmonic_type}) · ${bpmDelta} BPM${energy} · nota ${t.scores.total}`,
         );
       }
     }
-    const energy = position.energy !== null ? ` · E${position.energy} (alvo ${position.target_energy})` : "";
+    const energy = position.energy !== null ? ` · E${position.energy}${star(position)} (alvo ${position.target_energy})` : "";
     lines.push(`${position.position}. ${position.label} · ${position.bpm} BPM · ${position.camelot}${energy}`);
   });
+  if (result.order.some((position) => position.energy_estimated)) {
+    lines.push("", "* energia estimada: energy da ReccoBeats (0–1) convertido para 1–10");
+  }
 
   if (result.plans?.length) {
     lines.push("", "## Plano das passagens");

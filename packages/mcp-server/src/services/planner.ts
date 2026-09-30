@@ -8,7 +8,7 @@ import { formatCamelot, harmonicMatch, parseKey } from "./camelot.js";
 import { bpmDistance, echoOnly, labelOf } from "./dj-engine.js";
 import type { MixPreset } from "./mix-presets.js";
 
-const TYPE_NAME: Record<TransitionType, string> = {
+export const TYPE_NAME: Record<TransitionType, string> = {
   blend: "blend",
   bass_swap: "bass swap",
   filter: "filtro passa-alta",
@@ -18,6 +18,23 @@ const NO_DATA_ALERT = "vocal e grave: sem dado (plano por metadados)";
 
 const toValidate = (t: TrackAnalysis): boolean => t.notes?.includes("[A VALIDAR] tom") ?? false;
 
+/**
+ * Comprimento e compasso da troca de grave de cada tipo (ADR 0005). Blend longo: harmonia segura e ΔBPM ≤ 1.
+ * O Jev escolhe só o tipo; o tamanho sai daqui, para o plano não depender de número vindo da nuvem.
+ */
+export function shapeOf(type: TransitionType, longBlend: boolean): { length: TransitionPlan["length_bars"]; bar: number | null } {
+  switch (type) {
+    case "echo_out":
+      return { length: 4, bar: null };
+    case "blend":
+      return longBlend ? { length: 32, bar: 17 } : { length: 16, bar: 9 };
+    case "bass_swap":
+      return { length: 8, bar: 5 };
+    case "filter":
+      return { length: 8, bar: null };
+  }
+}
+
 export function planTransition(a: TrackAnalysis, b: TrackAnalysis): TransitionPlan {
   const keyA = parseKey(a.camelot);
   const keyB = parseKey(b.camelot);
@@ -26,13 +43,11 @@ export function planTransition(a: TrackAnalysis, b: TrackAnalysis): TransitionPl
   const { diff, mode } = bpmDistance(a.bpm, b.bpm);
 
   let type: TransitionType;
-  let length: TransitionPlan["length_bars"];
-  let bar: number | null = null;
-  if (echoOnly(h.score, diff)) [type, length] = ["echo_out", 4];
-  else if (h.type === "segura" && diff <= 1) [type, length, bar] = ["blend", 32, 17];
-  else if (h.type === "segura" && diff <= 3) [type, length, bar] = ["blend", 16, 9];
-  else if ((h.type === "criativa" && diff <= 3) || (h.type === "segura" && diff <= 6)) [type, length, bar] = ["bass_swap", 8, 5];
-  else [type, length] = ["filter", 8];
+  if (echoOnly(h.score, diff)) type = "echo_out";
+  else if (h.type === "segura" && diff <= 3) type = "blend";
+  else if ((h.type === "criativa" && diff <= 3) || (h.type === "segura" && diff <= 6)) type = "bass_swap";
+  else type = "filter";
+  const { length, bar } = shapeOf(type, h.type === "segura" && diff <= 1);
 
   const ratio = diff / Math.min(a.bpm, b.bpm);
   const strategy = ratio >= 0.03 && ratio <= 0.08 ? "ramp" : "match_incoming";

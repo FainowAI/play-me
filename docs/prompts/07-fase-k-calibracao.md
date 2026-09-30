@@ -2,6 +2,8 @@
 
 Sprint 4 da EAP (`docs/eap_play-me_fainow.md`), work packages 7.1, 7.2 e 7.3, mais as pendências P10 e P12 de `docs/decisoes.md`. Rode depois do prompt 06 aceito (ADR 0007).
 
+Status: entregue em 30/09/2026 (ADR 0008). Critérios: 1h30 → 21 faixas (não 137); nota gravada e relida; Jev comparado em 20 pares (95% no tipo, Pearson 0,78). Pendências P11, P13 e P14 em `docs/decisoes.md`.
+
 ```
 Use o /feature-builder.
 

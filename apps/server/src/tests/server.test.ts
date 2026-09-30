@@ -10,7 +10,7 @@ import { ApprovalWaiter } from "../approvals.js";
 import { openRepo, type Repo } from "../repo.js";
 import { createHttpServer, type HttpDeps } from "../server.js";
 import { InvalidSettingsError, SettingsStore, validateWeights } from "../settings.js";
-import type { Approval, ChatSession, PlanRow, Playlist, ServerEvent, SetRow, SetSnapshot, SetVersion, Status, Turn } from "../types.js";
+import type { Approval, ChatSession, PlanRow, Playlist, ServerEvent, SetRow, SetSnapshot, SetVersion, Status, TransitionFeedback, Turn } from "../types.js";
 
 const now = new Date().toISOString();
 const sessions: ChatSession[] = [];
@@ -256,10 +256,37 @@ try {
     assert.deepEqual(setBody.versions.map((v) => v.guide.length), [1, 1]);
     assert.deepEqual(setBody.versions[0]?.snapshot?.order.map((t) => t.label), ["Um — Artista", "Dois — Artista"]);
     assert.equal((await fetch(`${b}/api/sets/nao-existe`)).status, 404);
+
+    // POST /api/plans/:id/feedback: nota 1–5 gravada, a última vale, e o set e a sessão devolvem `feedback` no plano
+    const planId = real.listPlans(v1.version.id)[0]?.id ?? "";
+    const rate = (id: string, body: unknown, contentType = "application/json") =>
+      fetch(`${b}/api/plans/${id}/feedback`, { method: "POST", headers: { "Content-Type": contentType }, body: typeof body === "string" ? body : JSON.stringify(body) });
+    const planIn = async (path: string) => ((await (await fetch(`${b}${path}`)).json()) as { versions: VersionJson[] }).versions[0]?.plans[0];
+    assert.equal((await planIn(`/api/sets/${v1.set.id}`))?.feedback, null); // sem nota: null
+    let rated = await rate(planId, { rating: 4, notes: "entrada boa" });
+    assert.equal(rated.status, 200);
+    const given = (await rated.json()) as TransitionFeedback;
+    assert.deepEqual(Object.keys(given).sort(), ["created_at", "notes", "rating"]);
+    assert.deepEqual([given.rating, given.notes], [4, "entrada boa"]);
+    assert.deepEqual((await planIn(`/api/sets/${v1.set.id}`))?.feedback, given);
+    assert.deepEqual((await planIn(`/api/sessions/${s.id}`))?.feedback, given);
+    rated = await rate(planId, { rating: 2 }); // trocar a nota: a última vale; sem notes, notes null
+    assert.deepEqual([((await rated.json()) as TransitionFeedback).notes, (await planIn(`/api/sets/${v1.set.id}`))?.feedback?.rating], [null, 2]);
+    assert.equal((await rate(planId, { rating: 5, notes: "x".repeat(500) })).status, 200); // 500 caracteres passa
+    // inválido: 400, e nada é gravado
+    const invalidRatings: unknown[] = [{ rating: 6 }, { rating: 0 }, { rating: 3.5 }, { rating: "4" }, { rating: true }, { rating: null }, {}, { rating: 3, notes: 7 }, { rating: 3, notes: "x".repeat(501) }];
+    for (const body of invalidRatings) assert.equal((await rate(planId, body)).status, 400, JSON.stringify(body));
+    assert.equal((await rate(planId, "{")).status, 400); // JSON quebrado
+    assert.equal((await rate("%E0%A4%A", { rating: 3 })).status, 400); // id com % malformado
+    assert.equal((await fetch(`${b}/api/plans/${planId}/feedback`, { method: "POST", headers: { "Content-Type": "application/json", Origin: "http://evil.test" }, body: JSON.stringify({ rating: 1 }) })).status, 403); // origem estranha: barrada antes da rota
+    assert.equal((await planIn(`/api/sets/${v1.set.id}`))?.feedback?.rating, 5); // nem as inválidas nem a recusada gravaram
+    assert.equal((await rate(planId, { rating: 3 }, "text/plain")).status, 415); // sem JSON (CSRF)
+    assert.equal((await rate("nao-existe", { rating: 3 })).status, 404); // plano inexistente
+    assert.equal((await fetch(`${b}/api/plans/${planId}/feedback`)).status, 404); // só POST
   } finally {
     srv.closeAllConnections();
     await new Promise((r) => srv.close(r));
     real.close();
   }
 }
-console.log("[ok] http: sessions, chat SSE, validações, approvals, CORS, status, playlists, configurações, sessão com turnos, set com snapshot e guia, 404");
+console.log("[ok] http: sessions, chat SSE, validações, approvals, CORS, status, playlists, configurações, sessão com turnos, set com snapshot e guia, notas das passagens, 404");

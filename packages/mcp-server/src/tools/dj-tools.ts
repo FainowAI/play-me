@@ -1,10 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { LIMITS } from "../constants.js";
+import { JEV_COMPARE_PAIRS, LIMITS } from "../constants.js";
 import { formatCamelot, musicalName, parseKey } from "../services/camelot.js";
 import { getContext } from "../services/context.js";
 import { buildReport, buildSet, normalizeWeights, scoreTransition } from "../services/dj-engine.js";
 import { fail, render, setToMarkdown } from "../services/format.js";
+import { compareTransitions, decideWithJev, jevFromEnv, type Comparison } from "../services/jev.js";
 import { mixGuideStep, planTransition } from "../services/planner.js";
 import { formatError, parseSpotifyId } from "../services/spotify-client.js";
 import { type MixGuideStep, ResponseFormat, type SetResult, type TrackAnalysis } from "../types.js";
@@ -60,20 +61,35 @@ function loadAnalyses(trackIds: string[]): { found: TrackAnalysis[]; missing: st
   return { found, missing };
 }
 
-async function resolveTrackIds(playlist?: string, trackIds?: string[]): Promise<{ ids: string[]; names: Map<string, string> }> {
+/** `max`: itens lidos da playlist (150; a playlist inteira quando o set é selecionado por tamanho, P10). `durations`: duration_ms do Spotify. */
+async function resolveTrackIds(
+  playlist?: string,
+  trackIds?: string[],
+  max: number = LIMITS.maxTracksPerSet,
+): Promise<{ ids: string[]; names: Map<string, string>; durations: Map<string, number | null> }> {
   const names = new Map<string, string>();
-  if (trackIds?.length) return { ids: trackIds.map((value) => parseSpotifyId(value, "track")), names };
+  const durations = new Map<string, number | null>();
+  if (trackIds?.length) return { ids: trackIds.map((value) => parseSpotifyId(value, "track")), names, durations };
   if (!playlist) throw new Error("Informe `playlist` ou `track_ids`.");
   const { client } = getContext();
-  const all = await client.getAllPlaylistItems(parseSpotifyId(playlist, "playlist"), LIMITS.maxTracksPerSet);
+  const all = await client.getAllPlaylistItems(parseSpotifyId(playlist, "playlist"), max);
   const ids: string[] = [];
   for (const track of all.items) {
     if (!track.id || track.is_local) continue;
     ids.push(track.id);
     names.set(track.id, `${track.name} — ${track.artists.join(", ")}`);
+    durations.set(track.id, track.duration_ms);
   }
-  return { ids, names };
+  return { ids, names, durations };
 }
+
+/** Rótulo vindo da API quando o usuário não definiu um. */
+const withLabels = (found: TrackAnalysis[], names: Map<string, string>): TrackAnalysis[] =>
+  found.map((entry) => (entry.label ? entry : { ...entry, label: names.get(entry.track_id) ?? entry.track_id }));
+
+/** Nomes pelo id; `cap` evita despejar ~120 nomes no resultado quando a playlist inteira é lida (P10, P11). */
+const listNames = (ids: string[], names: Map<string, string>, cap = Infinity): string =>
+  ids.slice(0, cap).map((id) => names.get(id) ?? id).join("; ") + (ids.length > cap ? ` e mais ${ids.length - cap}` : "");
 
 /** Preenche result.plans (um por passagem); se o planejador falhar, avisa e segue sem planos. */
 function attachPlans(result: SetResult, tracks: TrackAnalysis[]): void {
@@ -85,6 +101,21 @@ function attachPlans(result: SetResult, tracks: TrackAnalysis[]): void {
   } catch (error) {
     result.warnings.push(`Plano das passagens indisponível: ${formatError(error)}`);
   }
+}
+
+function compareToMarkdown(comparison: Comparison, minConfidence: number): string {
+  const { agreement: a } = comparison;
+  const pct = (value: number | null): string => (value === null ? "n/d" : `${value}%`);
+  return [
+    `# Jev × regras · ${comparison.pairs.length} par(es) respondido(s) em ${comparison.calls} chamada(s) · modelo ${comparison.model}`,
+    `Mesmo tipo: ${pct(a.type_pct)} de ${a.answered} · só com confiança ≥ ${minConfidence}: ${pct(a.confident_pct)} de ${a.confident} · correlação das notas: ${a.score_correlation ?? "n/d"}`,
+    "",
+    ...comparison.pairs.map(
+      (pair, index) =>
+        `${index + 1}. ${pair.from_label} → ${pair.to_label}: regras ${pair.rules_type} · Jev ${pair.jev_type} (${pair.jev_type_confidence}) · nota das regras ${pair.rules_score} · nota do Jev ${pair.jev_score}/5 (${pair.jev_score_confidence}) · ${pair.agree ? "concorda" : "discorda"}`,
+    ),
+    ...(comparison.errors.length ? ["", "## Erros", ...comparison.errors.map((error) => `- ${error}`)] : []),
+  ].join("\n");
 }
 
 export function registerDjTools(server: McpServer): void {
@@ -227,15 +258,17 @@ Args:
 Usa busca em feixe (beam search): avalia várias sequências em paralelo e pensa faixas à frente, em vez de escolher só a melhor transição imediata. Penaliza três ou mais faixas seguidas com energia 9+ para criar tensão e alívio.
 
 Args:
-  - playlist (string, opcional): ID/URI/link. Lê todas as faixas (até 150)
+  - playlist (string, opcional): ID/URI/link. Sem duration_minutes/max_tracks lê até 150 faixas e ordena todas; com um deles lê a playlist inteira (até 600 itens) e seleciona as melhores para o tamanho pedido
   - track_ids (string[], opcional): alternativa a playlist
+  - duration_minutes (10-600, opcional): tamanho do set em minutos (ex.: 90 para "1h30"). Seleciona, pela curva de energia, as faixas que mais se aproximam desse tempo, com a duração real do Spotify (por isso exige playlist). Exclusivo com max_tracks
+  - max_tracks (2-150, opcional): quantidade de faixas. Seleciona as melhores para a curva. Exclusivo com duration_minutes
   - curve: classic | peak_time | warm_up | sunrise
   - start_track / end_track (opcional): fixa abertura e fechamento
   - exclude (string[], opcional): faixas a deixar fora
   - weights (opcional), beam_width (opcional, 4-96)
   - response_format
 
-Retorna: ordem com seção (abertura, construção, crescimento, pico, clímax, encerramento), cada transição com relação harmônica, tipo (segura/criativa/arriscada), diferença de BPM, energia e motivo, pontos fracos, faixas que atrapalham, perfil de faixa-ponte para cada lacuna (Camelot, BPM e energia alvo) e avisos.
+Retorna: ordem com seção (abertura, construção, crescimento, pico, clímax, encerramento), cada transição com relação harmônica, tipo (segura/criativa/arriscada), diferença de BPM, energia e motivo, pontos fracos, faixas que atrapalham, perfil de faixa-ponte para cada lacuna (Camelot, BPM e energia alvo) e avisos. Com duration_minutes ou max_tracks traz também pool_size (faixas analisadas consideradas) e duration_ms (duração somada do set; null se o Spotify não informou alguma). Energia marcada com * (energy_estimated) é estimativa da ReccoBeats, não dado do Mixar.
 
 Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera playlists: mostre a ordem ao usuário antes de usar spotify_create_playlist_from_order.`,
       inputSchema: z
@@ -248,39 +281,60 @@ Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera
           exclude: z.array(z.string().min(1)).max(LIMITS.maxTracksPerSet).optional(),
           weights: weightsSchema,
           beam_width: z.number().int().min(4).max(96).optional(),
+          duration_minutes: z
+            .number()
+            .int()
+            .min(10)
+            .max(600)
+            .optional()
+            .describe("Tamanho do set em minutos (ex.: 90 para '1h30'). Seleciona as melhores faixas para esse tempo. Exclusivo com max_tracks"),
+          max_tracks: z
+            .number()
+            .int()
+            .min(2)
+            .max(LIMITS.maxTracksPerSet)
+            .optional()
+            .describe("Quantidade de faixas do set. Seleciona as melhores para a curva. Exclusivo com duration_minutes"),
           response_format: responseFormat,
         })
         .strict(),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    async ({ playlist, track_ids, curve, start_track, end_track, exclude, weights, beam_width, response_format }) => {
+    async ({ playlist, track_ids, curve, start_track, end_track, exclude, weights, beam_width, duration_minutes, max_tracks, response_format }) => {
       try {
-        const { ids, names } = await resolveTrackIds(playlist, track_ids);
+        if (duration_minutes !== undefined && max_tracks !== undefined) return fail("Informe duration_minutes ou max_tracks, não os dois.");
+        const selecting = duration_minutes !== undefined || max_tracks !== undefined;
+        // Sem tamanho pedido: até 150 itens, ordena todos (como antes). Com ele: a playlist inteira, e o feixe escolhe (P10)
+        const { ids, names, durations } = await resolveTrackIds(
+          playlist,
+          track_ids,
+          selecting ? LIMITS.maxPlaylistRead : LIMITS.maxTracksPerSet,
+        );
+        const cap = selecting ? 10 : Infinity;
         const excluded = new Set((exclude ?? []).map((value) => parseSpotifyId(value, "track")));
         const pool = [...new Set(ids)].filter((id) => !excluded.has(id));
         const { found, missing } = loadAnalyses(pool);
         if (found.length < 2) {
           return fail(
-            `Só ${found.length} faixa(s) com análise. Salve BPM e tom com dj_set_track_analysis. Sem análise: ${missing
-              .map((id) => names.get(id) ?? id)
-              .join("; ")}`,
+            `Só ${found.length} faixa(s) com análise. Salve BPM e tom com dj_set_track_analysis. Sem análise: ${listNames(missing, names, cap)}`,
           );
         }
-        // Rótulo vindo da API quando o usuário não definiu um
-        const tracks = found.map((entry) => (entry.label ? entry : { ...entry, label: names.get(entry.track_id) ?? entry.track_id }));
+        const tracks = withLabels(found, names);
         const result = buildSet(tracks, {
           curve,
           weights,
           startTrackId: start_track ? parseSpotifyId(start_track, "track") : undefined,
           endTrackId: end_track ? parseSpotifyId(end_track, "track") : undefined,
           beamWidth: beam_width,
+          maxTracks: max_tracks,
+          targetDurationMs: duration_minutes === undefined ? undefined : duration_minutes * 60_000,
+          durations,
         });
         if (missing.length) {
-          result.warnings.unshift(
-            `${missing.length} faixa(s) sem análise ficaram fora do set: ${missing.map((id) => names.get(id) ?? id).join("; ")}.`,
-          );
+          result.warnings.unshift(`${missing.length} faixa(s) sem análise ficaram fora do set: ${listNames(missing, names, cap)}.`);
         }
-        if (tracks.some((track) => track.energy === undefined)) {
+        // P12: só quem não tem nem a estimativa da ReccoBeats; olha o set escolhido, não o pool inteiro
+        if (result.order.some((position) => position.energy === null)) {
           result.warnings.push("Há faixas sem energia informada: a curva usa nota neutra para elas.");
         }
         attachPlans(result, tracks);
@@ -321,7 +375,7 @@ Args:
         const { ids, names } = await resolveTrackIds(playlist, track_ids);
         const { found, missing } = loadAnalyses(ids);
         if (found.length < 2) return fail("São necessárias pelo menos 2 faixas com análise salva.");
-        const tracks = found.map((entry) => (entry.label ? entry : { ...entry, label: names.get(entry.track_id) ?? entry.track_id }));
+        const tracks = withLabels(found, names);
         const result = buildReport(tracks, curve, normalizeWeights(weights));
         if (missing.length) {
           result.warnings.unshift(`${missing.length} faixa(s) sem análise foram puladas na avaliação: ${missing.map((id) => names.get(id) ?? id).join("; ")}.`);
@@ -345,17 +399,27 @@ O plano é feito por metadados (BPM, tom e energia salvos), sem estrutura por co
 
 Args:
   - from_track, to_track: IDs, URIs ou links (precisam ter análise salva)
+  - use_jev (boolean, padrão false): consulta o Jev (TypeSafe), que escolhe o tipo quando a confiança é ≥ JEV_MIN_CONFIDENCE (padrão 0,7). Sem chave, com erro ou com confiança baixa, as regras decidem e o plano avisa. O Jev recebe só números. É uma chamada de API paga: só use quando o usuário pedir o Jev
   - response_format`,
-      inputSchema: z.object({ from_track: z.string().min(1), to_track: z.string().min(1), response_format: responseFormat }).strict(),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: z
+        .object({
+          from_track: z.string().min(1),
+          to_track: z.string().min(1),
+          use_jev: z.boolean().default(false).describe("Consulta o Jev para escolher o tipo; sem chave, erro ou confiança baixa, as regras decidem"),
+          response_format: responseFormat,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    async ({ from_track, to_track, response_format }) => {
+    async ({ from_track, to_track, use_jev, response_format }) => {
       try {
         const ids = [parseSpotifyId(from_track, "track"), parseSpotifyId(to_track, "track")];
         const { found, missing } = loadAnalyses(ids);
         if (missing.length) return fail(`Sem análise salva para: ${missing.join(", ")}. Use dj_set_track_analysis antes.`);
         const [a, b] = found as [TrackAnalysis, TrackAnalysis];
-        const plan = planTransition(a, b);
+        const rules = planTransition(a, b);
+        const jev = use_jev ? jevFromEnv(getContext().config.dataDir) : undefined;
+        const plan = jev ? decideWithJev(rules, await jev.askTransition(a, b, rules), jev.minConfidence) : rules;
         return render(
           response_format,
           () =>
@@ -365,11 +429,70 @@ Args:
               `Tempo: ${plan.tempo.from_bpm} → ${plan.tempo.to_bpm} BPM (dif. ${plan.tempo.diff}, ${plan.tempo.mode}) · estratégia ${plan.tempo.strategy}`,
               `Harmonia: ${plan.harmonic.from} → ${plan.harmonic.to} · ${plan.harmonic.relation} (${plan.harmonic.class})`,
               `ΔEnergia: ${plan.energy_delta ?? "?"} · confiança ${plan.confidence}`,
+              ...(plan.source
+                ? [
+                    `Decisão: ${plan.source === "jev" ? "Jev" : "regras"}${
+                      plan.jev
+                        ? ` · Jev: ${plan.jev.type} (confiança ${plan.jev.type_confidence}), nota ${plan.jev.score}/5 (confiança ${plan.jev.score_confidence})`
+                        : ""
+                    }`,
+                  ]
+                : []),
               ...(plan.alerts.length ? ["Alertas:", ...plan.alerts.map((alert) => `- ${alert}`)] : []),
               `Motivo: ${plan.reason}`,
             ].join("\n"),
           { plan },
         );
+      } catch (error) {
+        return fail(formatError(error));
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------- jev compare
+  server.registerTool(
+    "jev_compare",
+    {
+      title: "Comparar o Jev com o planejador de regras",
+      description: `Pergunta ao Jev (TypeSafe) o tipo de transição e a nota de pares consecutivos de faixas analisadas e compara com o planejador de regras.
+
+Devolve, por par, o tipo das regras e o do Jev (com a confiança), a nota das regras (0-1) e a do Jev (1-5), e o resumo da concordância: type_pct (% de pares com o mesmo tipo), confident_pct (% de concordância só entre as respostas com confiança ≥ JEV_MIN_CONFIDENCE, padrão 0,7) e score_correlation (Pearson entre as duas notas).
+
+O Jev recebe só números (BPM, Camelot, energia, ΔBPM): nunca nome, artista nem ID do Spotify. Cada chamada entra em jev-calls.jsonl na pasta de dados. É uma chamada de API paga por par, em sequência: para no limite de requisições (429/529) ou após 3 falhas seguidas e devolve o que já tem. Só use quando o usuário pedir a comparação.
+
+Args:
+  - playlist (string, opcional): usa os pares consecutivos da ordem da playlist
+  - track_ids (string[], opcional): alternativa a playlist
+  - pairs (1-40, padrão 20): quantos pares consecutivos comparar
+  - response_format
+
+Sem TYPESAFE_API_KEY a ferramenta falha com um aviso claro. Faixas sem análise salva são puladas.`,
+      inputSchema: z
+        .object({
+          playlist: z.string().optional(),
+          track_ids: z.array(z.string().min(1)).max(LIMITS.maxTracksPerSet).optional(),
+          pairs: z.number().int().min(1).max(JEV_COMPARE_PAIRS.max).default(JEV_COMPARE_PAIRS.default),
+          response_format: responseFormat,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ playlist, track_ids, pairs, response_format }) => {
+      try {
+        const jev = jevFromEnv(getContext().config.dataDir);
+        if (!jev.available()) {
+          return fail("Sem chave do Jev: defina TYPESAFE_API_KEY no .env do backend e reinicie o servidor MCP. O jev_compare só compara o Jev com as regras.");
+        }
+        const { ids, names } = await resolveTrackIds(playlist, track_ids);
+        const { found } = loadAnalyses([...new Set(ids)]);
+        if (found.length < 2) return fail("São necessárias pelo menos 2 faixas com análise salva.");
+        const tracks = withLabels(found, names);
+        const consecutive = tracks.slice(0, pairs).flatMap((a, index): [TrackAnalysis, TrackAnalysis][] => {
+          const b = tracks[index + 1];
+          return b ? [[a, b]] : [];
+        });
+        const comparison = await compareTransitions(consecutive, jev);
+        return render(response_format, () => compareToMarkdown(comparison, jev.minConfidence), { ...comparison });
       } catch (error) {
         return fail(formatError(error));
       }

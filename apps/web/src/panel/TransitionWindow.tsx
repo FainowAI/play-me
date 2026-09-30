@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+import { ApiError } from "../api.ts";
 import { Button, CamelotWheel, EnergyMeter, KeyBadge, StatusTag } from "../components/playme/index.ts";
 import { HARMONIC_TONE, TYPE_LABEL, compatibleKeys, relationLabel, sectionLabel, signed } from "../setview.ts";
 import { splitLabel } from "../state.ts";
@@ -34,11 +36,21 @@ function Deck({ deck, track }: { deck: "a" | "b"; track: SnapshotTrack }) {
  * Passagem N → N+1 (gaveta de 820 px): decks, números do plano, guia do Mix e ações.
  * Devolve só os blocos: padding e gap do miolo são do Overlay da shell.
  */
-export function TransitionWindow({ version, position, onClose, onSend }: TransitionWindowProps) {
-  const plan = version.plans.find((p) => p.position === position)?.plan;
+export function TransitionWindow({ version, position, onClose, onSend, onRate }: TransitionWindowProps) {
+  const [saving, setSaving] = useState(false); // nota em gravação: os cinco botões ficam desabilitados
+  const [error, setError] = useState<string | null>(null);
+  const ratingRef = useRef<HTMLDivElement>(null);
+  const clicked = useRef<number | null>(null);
+  // ponytail: desabilitar o botão clicado tira o foco dele (teclado e leitor de tela perderiam o lugar): devolve ao terminar de gravar
+  useEffect(() => {
+    if (saving || clicked.current === null) return;
+    ratingRef.current?.querySelectorAll("button")[clicked.current - 1]?.focus(); // os cinco primeiros botões da linha são as notas 1 a 5
+    clicked.current = null;
+  }, [saving]);
+  const row = version.plans.find((p) => p.position === position);
   const a = version.snapshot?.order[position - 1];
   const b = version.snapshot?.order[position];
-  if (!plan || !a || !b) {
+  if (!row || !a || !b) {
     return (
       <header className="pn-win__head">
         <div className="pn-win__titles">
@@ -52,6 +64,8 @@ export function TransitionWindow({ version, position, onClose, onSend }: Transit
     );
   }
 
+  const plan = row.plan;
+  const rated = row.feedback?.rating; // a última nota gravada: o plano volta com ela quando a shell relê o set
   const guide = version.guide[position - 1];
   const rel = relationLabel(plan);
   const titleA = splitLabel(a.label).title;
@@ -63,6 +77,19 @@ export function TransitionWindow({ version, position, onClose, onSend }: Transit
     ["ΔBPM", signed(Math.round(plan.tempo.to_bpm - plan.tempo.from_bpm))],
     ["ΔEnergia", plan.energy_delta === null ? "—" : signed(plan.energy_delta)],
   ];
+
+  const rate = async (n: number) => {
+    clicked.current = n;
+    setSaving(true);
+    setError(null);
+    try {
+      await onRate(row.id, n);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Servidor local não respondeu.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -115,13 +142,19 @@ export function TransitionWindow({ version, position, onClose, onSend }: Transit
             {plan.alerts.some((x) => /vocal/i.test(x)) ? null : <StatusTag tone="neutral">Vocal e grave: sem dado</StatusTag>}
             {plan.energy_delta !== null && plan.energy_delta <= -3 ? <StatusTag tone="ok">Respiro depois do clímax</StatusTag> : null}
           </div>
-          <div className="pn-rating">
-            <span className="label">Sua nota</span>
+          <div className="pn-rating" ref={ratingRef}>
+            <span className="label">{rated ? `Sua nota · ${rated}` : "Sua nota"}</span>
             {[1, 2, 3, 4, 5].map((n) => (
-              <Button key={n} variant="outline" size="sm" className="pn-mono" label={`Nota ${n}`} disabled title="Notas entram na Sprint 4">
+              <Button key={n} variant={n === rated ? "primary" : "outline"} size="sm" className="pn-mono" label={n === rated ? `Nota ${n}, atual` : `Nota ${n}`} disabled={saving} onClick={() => void rate(n)}>
                 {n}
               </Button>
             ))}
+            {saving ? <span className="pn-note">Salvando</span> : null}
+            {error ? (
+              <span role="alert">
+                <StatusTag tone="danger">{error}</StatusTag>
+              </span>
+            ) : null}
             <span className="pn-grow" />
             <Button variant="outline" size="sm" onClick={() => onSend(`Troca a faixa ${position + 1} por outra que encaixe.`)}>
               Trocar B

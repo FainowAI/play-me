@@ -1,4 +1,11 @@
-import { DEFAULT_WEIGHTS, ECHO_MAX_HARMONIC, ECHO_MIN_BPM_DIFF, ECHO_ONLY_PENALTY, WEAK_TRANSITION_SCORE } from "../constants.js";
+import {
+  DEFAULT_WEIGHTS,
+  ECHO_MAX_HARMONIC,
+  ECHO_MIN_BPM_DIFF,
+  ECHO_ONLY_PENALTY,
+  LIMITS,
+  WEAK_TRANSITION_SCORE,
+} from "../constants.js";
 import type {
   BridgeSuggestion,
   CurvePreset,
@@ -214,6 +221,10 @@ export interface BuildOptions {
   startTrackId?: string;
   endTrackId?: string;
   beamWidth?: number;
+  /** P10: seleciona `maxTracks` faixas do pool (ou as que cabem em `targetDurationMs`) em vez de ordenar todas. */
+  maxTracks?: number;
+  targetDurationMs?: number;
+  durations?: ReadonlyMap<string, number | null>; // track_id → duration_ms do Spotify
 }
 
 interface Beam {
@@ -240,13 +251,19 @@ export function normalizeWeights(partial?: Partial<Weights>): Weights {
  * Busca em feixe: mantém as `beamWidth` melhores sequências parciais a cada passo.
  * Isso evita a escolha gulosa (melhor Camelot agora, beco sem saída depois) e
  * avalia cada faixa pelo que ela deixa possível adiante.
+ *
+ * P10: com `maxTracks`/`targetDurationMs` o feixe preenche N posições escolhendo entre TODAS as faixas do pool
+ * (não só ordena); a curva de energia passa a valer para as N posições. Sem eles, N = n e nada muda.
  */
 export function buildSet(tracks: TrackAnalysis[], options: BuildOptions): SetResult {
   if (tracks.length < 2) throw new Error("São necessárias pelo menos 2 faixas com análise para montar um set.");
   const weights = normalizeWeights(options.weights);
   const n = tracks.length;
+  const selecting = options.maxTracks !== undefined || options.targetDurationMs !== undefined;
+  const size = selecting ? setSize(tracks, options) : { count: n, wanted: n };
+  const count = size.count; // N: posições que o feixe preenche
   const beamWidth = options.beamWidth ?? (n > 90 ? 12 : n > 50 ? 24 : 48);
-  const tAt = (index: number): number => (n === 1 ? 0 : index / (n - 1));
+  const tAt = (index: number): number => (count === 1 ? 0 : index / (count - 1));
 
   const indexOf = (id?: string): number | undefined => {
     if (!id) return undefined;
@@ -274,7 +291,8 @@ export function buildSet(tracks: TrackAnalysis[], options: BuildOptions): SetRes
           .map((track, idx) => ({ idx, fit: startFit(track, targetEnergy(options.curve, 0)) }))
           .filter(({ idx }) => idx !== endIdx)
           .sort((a, b) => b.fit - a.fit)
-          .slice(0, Math.min(6, n))
+          // ponytail: 12 aberturas só na seleção de pool grande; sem parâmetros fica em 6 (resultado idêntico ao de antes)
+          .slice(0, Math.min(selecting && n > 90 ? 12 : 6, n))
           .map(({ idx }) => idx);
 
   let beams: Beam[] = startCandidates.map((idx) => ({
@@ -284,8 +302,8 @@ export function buildSet(tracks: TrackAnalysis[], options: BuildOptions): SetRes
     highRun: (tracks[idx]?.energy ?? 0) >= 9 ? 1 : 0,
   }));
 
-  for (let position = 1; position < n; position += 1) {
-    const isLast = position === n - 1;
+  for (let position = 1; position < count; position += 1) {
+    const isLast = position === count - 1;
     const next: Beam[] = [];
     for (const beam of beams) {
       const last = beam.order[beam.order.length - 1] as number;
@@ -314,7 +332,10 @@ export function buildSet(tracks: TrackAnalysis[], options: BuildOptions): SetRes
 
   const best = beams[0];
   if (!best) throw new Error("Não foi possível montar o set com as restrições informadas.");
-  return buildReport(best.order.map((idx) => tracks[idx] as TrackAnalysis), options.curve, weights);
+  const ordered = best.order.map((idx) => tracks[idx] as TrackAnalysis);
+  const result = buildReport(ordered, options.curve, weights);
+  if (selecting) annotateSelection(result, ordered, n, size.wanted, options.durations);
+  return result;
 }
 
 /** Remove feixes que terminam na mesma faixa com o mesmo conjunto usado (mantém o melhor). */
@@ -335,6 +356,48 @@ function startFit(track: TrackAnalysis, target: number): number {
   return energyFit;
 }
 
+/**
+ * P10: quantas faixas o set terá. `maxTracks`, ou a duração pedida dividida pela duração média do pool
+ * (faixa sem duração fica fora da média); limitado entre 2 e min(n, 150). `wanted` é o pedido antes do limite.
+ */
+function setSize(tracks: TrackAnalysis[], options: BuildOptions): { count: number; wanted: number } {
+  let wanted = options.maxTracks ?? 0;
+  if (options.maxTracks === undefined) {
+    const known = tracks.flatMap((track) => {
+      const ms = options.durations?.get(track.track_id);
+      return typeof ms === "number" && ms > 0 ? [ms] : [];
+    });
+    if (known.length === 0) {
+      throw new Error("Sem a duração das faixas (vem da playlist do Spotify): informe `playlist` ou peça por max_tracks.");
+    }
+    wanted = Math.round((options.targetDurationMs ?? 0) / (known.reduce((sum, ms) => sum + ms, 0) / known.length));
+  }
+  return { count: Math.min(tracks.length, LIMITS.maxTracksPerSet, Math.max(2, wanted)), wanted };
+}
+
+/** P10: pool_size, duration_ms (null se faltar a duração de alguma faixa da ordem) e os avisos da seleção. */
+function annotateSelection(
+  result: SetResult,
+  ordered: TrackAnalysis[],
+  pool: number,
+  wanted: number,
+  durations?: ReadonlyMap<string, number | null>,
+): void {
+  const total = ordered.reduce<number | null>((sum, track) => {
+    const ms = durations?.get(track.track_id);
+    return sum === null || typeof ms !== "number" ? null : sum + ms;
+  }, 0);
+  result.pool_size = pool;
+  result.duration_ms = total;
+  const minutes = total === null ? "" : ` (~${Math.round(total / 60_000)} min)`;
+  result.warnings.push(`Selecionadas ${ordered.length} de ${pool} faixas analisadas${minutes}`);
+  if (wanted > ordered.length) {
+    result.warnings.push(
+      `Pedido de ~${wanted} faixas excede o máximo de ${ordered.length} (faixas analisadas ou limite por set): o set fica com ${ordered.length}.`,
+    );
+  }
+}
+
 // ---------- Relatório de um set (ordem calculada ou manual) ----------
 
 export function buildReport(ordered: TrackAnalysis[], curve: CurvePreset, weights: Weights): SetResult {
@@ -349,6 +412,7 @@ export function buildReport(ordered: TrackAnalysis[], curve: CurvePreset, weight
     bpm: track.bpm,
     camelot: track.camelot,
     energy: track.energy ?? null,
+    energy_estimated: track.energy_estimated === true,
     target_energy: round(targetEnergy(curve, tAt(index)), 1),
     section: sectionFor(curve, tAt(index)),
   }));

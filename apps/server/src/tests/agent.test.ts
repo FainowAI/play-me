@@ -7,7 +7,7 @@ import { AnalysisStore } from "spotify-dj-mcp-server/dist/services/analysis-stor
 import { AuthRequiredError } from "spotify-dj-mcp-server/dist/services/auth.js";
 import { ApprovalWaiter } from "../approvals.js";
 import { extractCreated, extractProposal, finishCreate, gate, recordFromResult, reorderSnapshot, runChat, structuredOf, summarize, type ChatDeps, type TurnCtx } from "../agent.js";
-import type { Repo } from "../repo.js";
+import { openRepo, type Repo } from "../repo.js";
 import { createSpotify } from "../spotify.js";
 import type { Approval, PlanInput, ServerEvent, SetRow, SetSnapshot, SetStatus, SetVersion } from "../types.js";
 
@@ -18,6 +18,7 @@ function fakeRepo() {
   const versions: SetVersion[] = [];
   const approvals: Approval[] = [];
   const plans: PlanInput[][] = [];
+  const saved = new Map<string, PlanInput[]>(); // planos por versão, para o listPlans
   const turns: { userMessage: string; events: ServerEvent[]; cost: number | null }[] = [];
   const repo = {
     getSession: () => ({ id: "c1", agent_session_id: null, title: "Eletro", created_at: now, updated_at: now }),
@@ -34,7 +35,11 @@ function fakeRepo() {
     addTurn(_c: string, userMessage: string, events: ServerEvent[], cost: number | null) {
       turns.push({ userMessage, events: [...events], cost });
     },
-    savePlans: (_v: string, p: PlanInput[]) => void plans.push(p),
+    savePlans(v: string, p: PlanInput[]) {
+      plans.push(p);
+      saved.set(v, p);
+    },
+    listPlans: (v: string) => saved.get(v) ?? [],
     setStatus(_id: string, status: SetStatus, sp?: { playlist_id: string | null; url: string | null }) {
       set = { ...(set as SetRow), status, spotify_playlist_id: sp?.playlist_id ?? null, spotify_url: sp?.url ?? null };
       return set;
@@ -266,6 +271,49 @@ let snapshot: SetSnapshot | null | undefined;
   await pending;
 }
 
+// ---------- Sprint 4: tamanho do set (P10) e energia estimada (P12) no snapshot ----------
+const sized = { ...full, pool_size: 30, duration_ms: 5_460_000, order: full.order.map((t) => (t.track_id === "b" ? { ...t, energy_estimated: true } : t)) };
+{
+  const { f, ctx } = setup(storeDir);
+  recordFromResult(ctx, sized);
+  const s = f.versions[0]?.snapshot;
+  assert.deepEqual([s?.pool_size, s?.duration_ms], [30, 5_460_000]);
+  assert.deepEqual(s?.order.map((t) => t.energy_estimated), [undefined, true, undefined, undefined]); // por faixa
+  assert.equal("energy_estimated" in (s?.order[0] ?? {}), false); // o que o MCP não mandou continua ausente
+  // reordenar no envio: pool_size segue, a duração da ordem nova não é conhecida e o energy_estimated anda com a faixa
+  const moved = reorderSnapshot(s ?? null, ["c", "b", "a", "d"]);
+  assert.deepEqual([moved?.pool_size, moved?.duration_ms], [30, null]);
+  assert.deepEqual(moved?.order.map((t) => [t.track_id, t.energy_estimated]), [["c", undefined], ["b", true], ["a", undefined], ["d", undefined]]);
+  assert.equal(reorderSnapshot(s ?? null, ["a", "b", "c", "d"]), s); // ordem igual: o próprio snapshot, com a duração
+  assert.equal(s?.duration_ms, 5_460_000); // o original não muda
+  // duration_ms null (o Spotify não deu a duração de alguma faixa) é copiado como null; valor de tipo errado é ignorado
+  const nulled = setup(storeDir);
+  recordFromResult(nulled.ctx, { ...full, pool_size: 12, duration_ms: null });
+  assert.deepEqual([nulled.f.versions[0]?.snapshot?.pool_size, nulled.f.versions[0]?.snapshot?.duration_ms], [12, null]);
+  const odd = setup(storeDir);
+  recordFromResult(odd.ctx, { ...full, pool_size: "30", duration_ms: "5460000" });
+  const keys = Object.keys(odd.f.versions[0]?.snapshot ?? {});
+  assert.equal(keys.includes("pool_size") || keys.includes("duration_ms"), false);
+}
+
+// nota dada não trava o turno: resultado de mesma ordem devolve a mesma versão e não regrava os planos (a nota aponta para eles)
+{
+  const real = openRepo(":memory:");
+  const session = real.createSession("Eletro");
+  const ctx: TurnCtx = { repo: real, waiter: new ApprovalWaiter(), emit: () => undefined, chatSessionId: session.id, note: "monte um set", storeDir };
+  recordFromResult(ctx, full);
+  const setId = real.getCurrentSet(session.id)?.id ?? "";
+  const versionId = real.latestVersion(setId)?.id ?? "";
+  const planId = real.listPlans(versionId)[0]?.id ?? "";
+  assert.equal(real.listPlans(versionId).length, 3);
+  assert.equal(real.addFeedback(planId, 4, "boa")?.rating, 4);
+  recordFromResult(ctx, full); // "mais energia no meio" com a mesma ordem: sem versão nova
+  assert.equal(real.listVersions(setId).length, 1);
+  const kept = real.listPlans(versionId);
+  assert.deepEqual([kept.length, kept[0]?.id, kept[0]?.feedback?.rating], [3, planId, 4]); // planos e nota intactos
+  real.close();
+}
+
 // ---------- detalhe das ferramentas ----------
 {
   const names = { playlist: (id: string) => (id === "pl1" ? "Eletro" : id), track: (id: string) => (id === "t1" ? "Um — Artista" : id) };
@@ -277,6 +325,13 @@ let snapshot: SetSnapshot | null | undefined;
   assert.equal(d("dj_build_set", { playlist: "pl1", curve: "classic" }, "start"), "Eletro · curva classic");
   assert.equal(d("dj_build_set", { track_ids: ["a", "b"] }, "start"), "2 faixas");
   assert.equal(d("dj_build_set", { order: new Array(21).fill({}), curve: "classic" }, "end"), "21 faixas · curva classic");
+  // tamanho pedido (P10): no início o que o usuário pediu; no fim o que saiu (minutos de duration_ms, arredondados)
+  assert.equal(d("dj_build_set", { playlist: "pl1", duration_minutes: 90, curve: "classic" }, "start"), "Eletro · 90 min · curva classic");
+  assert.equal(d("dj_build_set", { playlist: "pl1", max_tracks: 20 }, "start"), "Eletro · 20 faixas");
+  assert.equal(d("dj_build_set", { playlist: "pl1", duration_minutes: "90" }, "start"), "Eletro"); // tipo errado: ignora, nunca "NaN"
+  assert.equal(d("dj_build_set", { order: new Array(20).fill({}), duration_ms: 5_460_000, curve: "classic" }, "end"), "20 faixas · 91 min · curva classic");
+  assert.equal(d("dj_build_set", { order: new Array(20).fill({}), duration_ms: 5_399_999, curve: "classic" }, "end"), "20 faixas · 90 min · curva classic");
+  assert.equal(d("dj_build_set", { order: new Array(20).fill({}), duration_ms: null, curve: "classic" }, "end"), "20 faixas · curva classic"); // alguma faixa sem duração
   assert.equal(d("dj_evaluate_order", { average_score: 0.84 }, "end"), "nota média 0,84");
   assert.equal(d("dj_evaluate_order", { average_score: 0.8 }, "end"), "nota média 0,80");
   assert.equal(d("transition_plan", { from_track: "t1", to_track: "spotify:track:t2" }, "start"), "Um — Artista → t2");
@@ -353,6 +408,9 @@ const finished = { type: "result", subtype: "success", total_cost_usd: 0.03 };
   assert.deepEqual(f.turns, [{ userMessage: "monte um set", events: out.filter((e) => e.type !== "done"), cost: 0.03 }]);
   // pesos do usuário no system prompt: fração com ponto e duas casas
   assert.match(String(seen.options?.systemPrompt), /Pesos da nota do par escolhidos pelo usuário \(frações que somam 1\): camelot 0\.35, bpm 0\.25, energy 0\.25, style 0\.10, progression 0\.05\. Passe-os no parâmetro weights de dj_build_set e dj_evaluate_order\./);
+  // Sprint 4: duração e quantidade só quando o usuário pede; o Jev só quando ele pede
+  assert.match(String(seen.options?.systemPrompt), /duration_minutes em dj_build_set \(1h30 = 90\).*max_tracks; sem pedido, não passe nenhum dos dois\./);
+  assert.match(String(seen.options?.systemPrompt), /transition_plan com use_jev: true ou jev_compare quando o usuário pedir o Jev\./);
 }
 // erro no agente vira evento error e o turno é gravado assim mesmo; falha ao gravar o turno não derruba o runChat
 {
@@ -442,4 +500,4 @@ const finished = { type: "result", subtype: "success", total_cost_usd: 0.03 };
   assert.equal((await ok).behavior, "deny");
 }
 
-console.log("[ok] agent: gate, extração, snapshot com origem das faixas, reorderSnapshot, detalhe das ferramentas, runChat com turno gravado e pesos, spotify");
+console.log("[ok] agent: gate, extração, snapshot com origem das faixas, tamanho e energia estimada, reorderSnapshot, detalhe das ferramentas com duração, runChat com turno gravado e pesos, nota sem travar o turno, spotify");

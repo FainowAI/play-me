@@ -96,8 +96,8 @@ export function useApp() {
   // reabriria com o stream aberto). Sem turno vivo um `text` ligaria o busy sem ninguém para desligar: vira erro terminal.
   const notice = (text: string) => dispatch(turn.current ? { type: "event", event: { type: "text", text } } : { type: "turn_failed", text });
 
-  /** Evento `set` → lê o set completo e troca a versão com View Transition (as linhas do painel se reordenam). */
-  const loadSet = async (setId: string, status: SetStatus) => {
+  /** Evento `set` → lê o set completo e troca a versão com View Transition (as linhas do painel se reordenam). Sem `status`, só atualiza o set: a aba do painel fica como está. */
+  const loadSet = async (setId: string, status?: SetStatus) => {
     const n = ++setReq.current;
     try {
       const set = await api.set(setId);
@@ -215,6 +215,22 @@ export function useApp() {
     dispatch({ type: "overlay", overlay: { kind: "transition", position } });
   };
 
+  /**
+   * Nota 1–5 de uma passagem: grava e relê o set (o plano volta com `feedback`), na versão que o painel já mostra.
+   * Erro: aviso no chat e relança, para a janela da Transição mostrar a mensagem.
+   */
+  const rate = async (planId: string, rating: number) => {
+    const setId = state.set?.set.id;
+    const req = setReq.current; // trocou de conversa durante a gravação: a releitura traria o set antigo para a conversa nova
+    try {
+      await api.rate(planId, rating);
+    } catch (e) {
+      notice(errorText(e));
+      throw e;
+    }
+    if (setId && req === setReq.current) await loadSet(setId);
+  };
+
   return {
     state,
     draft,
@@ -244,6 +260,7 @@ export function useApp() {
     setTab: (tab: PanelTab) => dispatch({ type: "panel", tab }),
     viewVersion: (version: number | null) => dispatch({ type: "view_version", version }),
     openTransition,
+    rate,
     openTrack: (trackId: string) => dispatch({ type: "overlay", overlay: { kind: "track", trackId } }),
     openSettings: () => {
       dispatch({ type: "sidebar", open: false }); // vindo da gaveta da sidebar, ela não fica aberta por baixo

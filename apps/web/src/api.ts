@@ -2,7 +2,7 @@
  * Cliente da API do apps/server (127.0.0.1:8787). Só JSON e SSE; nenhuma chave passa por aqui.
  * CONTRATO: usado pela trilha shell (src/shell) e pelo painel (src/panel).
  */
-import type { ApprovalStatus, Playlist, ServerEvent, SessionDetail, SessionListItem, SetDetail, Settings, Status } from "./types.ts";
+import type { ApprovalStatus, Playlist, ServerEvent, SessionDetail, SessionListItem, SetDetail, Settings, Status, TransitionFeedback } from "./types.ts";
 
 export const API_BASE = "http://127.0.0.1:8787";
 
@@ -38,6 +38,9 @@ export const api = {
   decide: (approvalId: string, decision: Exclude<ApprovalStatus, "pending">) =>
     request<{ id: string; status: ApprovalStatus }>("POST", `/api/approvals/${encodeURIComponent(approvalId)}`, { decision }),
   settings: () => request<Settings>("GET", "/api/settings"),
+  /** Sprint 4 (7.1.1): nota 1–5 de uma passagem; devolve a nota gravada. */
+  rate: (planId: string, rating: number, notes?: string) =>
+    request<TransitionFeedback>("POST", `/api/plans/${encodeURIComponent(planId)}/feedback`, { rating, ...(notes ? { notes } : {}) }),
   saveSettings: (settings: Settings) => request<Settings>("PUT", "/api/settings", settings),
 };
 

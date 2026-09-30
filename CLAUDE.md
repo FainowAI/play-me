@@ -250,7 +250,7 @@ Pontos de automação: `[compasso relativo ao início da transição, ganho 0..1
 
 Com 137 faixas são ~18 mil pares ordenados: Jev pontua em lote; Claude trabalha só sobre os melhores candidatos.
 
-**Contrato no código (`services/analyzer/analyzer/jev/`):**
+**Contrato no código (`packages/mcp-server/src/services/jev.ts`, D39; o local previsto no analisador Python não vale mais):**
 - Monta `state` só com IDs internos e features numéricas (BPM, Camelot, energia por compasso, vocal por compasso, seções, clareza tonal).
 - Cada resposta é gravada com `confidence`. Abaixo do limiar configurado (`JEV_MIN_CONFIDENCE`), usa a decisão do planejador de regras e marca `source = rules`.
 - Chave `TYPESAFE_API_KEY` só no `.env` do backend. Nunca no front, nunca no git.
@@ -330,7 +330,8 @@ Cada fase fecha com critério de aceite verificável. Não pular.
 
 - **Fase M — Metadados (concluída em 29/09).** BPM e tom pela ReccoBeats, com o Mixar como verdade (`metadata_lookup`, `metadata_coverage`; ADR 0004). Eletro gravada: 436 de 557 faixas (22 Mixar, 414 web); tom da web fica [A VALIDAR].
 - **Fase P — Planejador por metadados (concluída em 29/09, ADR 0005).** `TransitionPlan` sem estrutura, em TypeScript no MCP (D30): tipo e comprimento por BPM, tom e energia, mais o guia do Mix. Falta confirmar presets do Mix além de Fade e Rise.
-- **Fase C concluída: Sprint 2 (servidor, ADR 0006) em 29/09 e Sprint 3 (interface, ADR 0007) em 30/09; próximo: Sprint 4, Fase K (prompt 07).**
+- **Fase C concluída: Sprint 2 (servidor, ADR 0006) em 29/09 e Sprint 3 (interface, ADR 0007) em 30/09.**
+- **Fase K (Sprint 4, ADR 0008) concluída em 30/09: tamanho do set por duração real, energia da web estimada, notas 1–5 e Jev validado (20 pares, 95% no tipo). Recalibração (7.3.1) espera notas reais.**
 - **Fase C — Chat.** `apps/server` com Agent SDK e `apps/web` com as telas da D21.
 - **Fase K — Calibração.** Ajustar regras e pesos com as notas de `transition_feedback`.
 - **Trilha de áudio (opcional, quando houver arquivos):** antigas Fases 0 a 3 — protótipo da grade (Beat This!, suspenso em 28/09, ver prompt 02), casamento, análise básica, análise profunda.
@@ -347,11 +348,11 @@ Cada fase fecha com critério de aceite verificável. Não pular.
 
 ## Estado atual
 
-- Rota por metadados (D22, D24). Fases M, P e C concluídas; próximo: prompt 07 (Fase K). Escopo, prazo, estados do set e Jev fechados nas D25 a D30; EAP em `docs/eap_play-me_fainow.md`.
-- `packages/mcp-server`: cópia do MCP em uso (original em `Desktop\mcps\spotify-dj-mcp-server`, que segue ativo no Claude Desktop). 15 ferramentas: as 11 originais (OAuth PKCE, análise manual do Mixar, montador de set por busca em feixe, criação de playlist `[DJ MIX]` privada), `metadata_lookup` e `metadata_coverage` (Fase M), `transition_plan` e `export_mix_guide` (Fase P, ADR 0005).
+- Rota por metadados (D22, D24). Fases M, P, C e K concluídas (30/09); o que falta está em `docs/decisoes.md` (Próximo passo). Escopo, prazo, estados do set e Jev fechados nas D25 a D30; EAP em `docs/eap_play-me_fainow.md`.
+- `packages/mcp-server`: cópia do MCP em uso (original em `Desktop\mcps\spotify-dj-mcp-server`, que segue ativo no Claude Desktop). 16 ferramentas: as 11 originais (OAuth PKCE, análise manual do Mixar, montador de set por busca em feixe, criação de playlist `[DJ MIX]` privada), `metadata_lookup` e `metadata_coverage` (Fase M), `transition_plan` e `export_mix_guide` (Fase P, ADR 0005), `jev_compare` (Fase K, ADR 0008; `transition_plan` aceita `use_jev`).
 - Store do MCP (`~/.spotify-dj-mcp/analysis.json`): 436 faixas da Eletro (22 do Mixar, 414 da ReccoBeats). Entrada do Mixar nunca é sobrescrita. Backup anterior à gravação: `analysis.backup-2026-09-29.json`.
 - `services/analyzer`: `decode.py` e `grid.py` prontos e testados na parte pura; Beat This! e PyTorch não instalados (trilha de áudio suspensa). ffmpeg ainda não está no WSL.
-- Jev: chave no `.env`; acesso e SDK validados na Sprint 4 (D28).
+- Jev: acesso validado em 30/09 (API real, jev-1.13.0); cliente em `packages/mcp-server/src/services/jev.ts` (D39), log em `~/.spotify-dj-mcp/jev-calls.jsonl`.
 - `apps/server`: pronto (ADR 0006). Agent SDK com Haiku 4.5 por padrão (D32), SSE, SQLite em `data/playme.sqlite`, gate de aprovação e proteção local (D33). Rodar: `npm run build` e `npm run start -w @playme/server`. API v2 na Sprint 3: snapshot do set por versão, turnos gravados, `/api/status`, `/api/playlists`, `/api/settings`, gate recusa IDs fora do set (D35, D36).
 - `apps/web`: pronta (ADR 0007). React 19 + Vite 8 + Tailwind 4 com os tokens; componentes do design system em `src/components/playme/`; orb do `thinking-orbs`; a conversa aberta fica no hash da URL. Rodar: `npm run dev -w @playme/web` (http://127.0.0.1:5173) com o servidor no ar.
 - UI: telas do canvas (D21, D23, D31) com os textos já pelas decisões (ReccoBeats, Jev com chave, contagem real); o canvas em si ainda mostra GetSongBPM/Deezer e 548 faixas.

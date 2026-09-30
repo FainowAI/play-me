@@ -31,16 +31,22 @@ export interface SetRow {
   updated_at: string;
 }
 
-/** Faixa na ordem do set (SetPosition do MCP) mais a origem do dado no store do MCP. */
-export interface SnapshotTrack extends SetPosition {
+/**
+ * Faixa na ordem do set (SetPosition do MCP) mais a origem do dado no store do MCP.
+ * `energy_estimated` é opcional aqui: o MCP o devolve sempre, mas versões gravadas antes da Sprint 4 não o têm (daí o Omit).
+ */
+export interface SnapshotTrack extends Omit<SetPosition, "energy_estimated"> {
   source: string | null; // "web" = ReccoBeats (BPM conferido, tom a validar); outro = Mixar/usuário; null = sem dado no store
   key_review: boolean; // tom [A VALIDAR]
+  energy_estimated?: boolean; // Sprint 4 (P12): energia derivada do energy da ReccoBeats (0–1 → 1–10), não a do Mixar
 }
 
 /** Resultado do dj_build_set / dj_evaluate_order guardado por versão (sem planos: estão em transition_plans). */
 export interface SetSnapshot {
   curve: string;
   average_score: number;
+  pool_size?: number; // Sprint 4 (P10): faixas analisadas consideradas na seleção
+  duration_ms?: number | null; // Sprint 4 (P10): duração somada da ordem; null se o Spotify não informou alguma faixa
   order: SnapshotTrack[];
   transitions: TransitionReport[]; // índice i = passagem i+1 → i+2
   weak_transitions: number[]; // índices em `transitions`
@@ -70,6 +76,14 @@ export interface PlanInput {
 export interface PlanRow extends PlanInput {
   id: string;
   set_version_id: string;
+  created_at: string;
+  feedback: TransitionFeedback | null; // Sprint 4 (7.1.1): última nota dada pelo DJ (listPlans sempre preenche)
+}
+
+/** Nota 1–5 dada na Transição expandida (tabela transition_feedback); espelha apps/web/src/types.ts. */
+export interface TransitionFeedback {
+  rating: number; // 1..5
+  notes: string | null;
   created_at: string;
 }
 

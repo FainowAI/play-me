@@ -32,7 +32,7 @@ const repo = openRepo(path.join(dataDir, "playme.sqlite"));
 const waiter = new ApprovalWaiter();
 
 const mcpEnv: Record<string, string> = {};
-for (const k of ["SPOTIFY_CLIENT_ID", "SPOTIFY_REDIRECT_URI", "SPOTIFY_DJ_DATA_DIR"]) {
+for (const k of ["SPOTIFY_CLIENT_ID", "SPOTIFY_REDIRECT_URI", "SPOTIFY_DJ_DATA_DIR", "TYPESAFE_API_KEY", "JEV_MIN_CONFIDENCE"]) {
   const v = process.env[k];
   if (v) mcpEnv[k] = v;
 }

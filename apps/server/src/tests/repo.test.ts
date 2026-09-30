@@ -110,6 +110,37 @@ assert.deepEqual(plans[0]?.plan, { kind: "blend", n: 1 });
 assert.equal(plans[0]?.score, 0.9);
 assert.equal(repo.listPlans(c.version.id).length, 0);
 
+// ---------- notas 1–5: a última vale, por plano; plano inexistente não grava ----------
+{
+  const session = repo.createSession("notas");
+  const { version } = repo.recordProposal(session.id, "[DJ MIX] Notas", "classic", ["n1", "n2", "n3"], null, null);
+  repo.savePlans(version.id, [plan(1, 0.8), plan(2, 0.6)]);
+  const at = (i: number) => repo.listPlans(version.id)[i];
+  assert.deepEqual([at(0)?.feedback, at(1)?.feedback], [null, null]); // sem nota: null, nunca ausente
+  const planId = at(0)?.id ?? "";
+
+  const first = repo.addFeedback(planId, 4, "entrada boa");
+  assert.deepEqual(Object.keys(first ?? {}).sort(), ["created_at", "notes", "rating"]);
+  assert.deepEqual([first?.rating, first?.notes], [4, "entrada boa"]);
+  assert.match(first?.created_at ?? "", /^\d{4}-\d\d-\d\dT/);
+  assert.deepEqual(at(0)?.feedback, first);
+  assert.equal(at(1)?.feedback, null); // a outra passagem não muda
+
+  // a última vence: no mesmo milissegundo o rowid desempata, e depois de um tempo vale o created_at
+  repo.addFeedback(planId, 2, null);
+  repo.addFeedback(planId, 5, "agora sim");
+  assert.deepEqual([at(0)?.feedback?.rating, at(0)?.feedback?.notes], [5, "agora sim"]);
+  await sleep();
+  repo.addFeedback(planId, 3, null);
+  assert.deepEqual([at(0)?.feedback?.rating, at(0)?.feedback?.notes], [3, null]);
+  assert.equal(at(1)?.feedback, null);
+
+  // plano inexistente: undefined e nada gravado; fora de 1–5 o CHECK do banco barra (o HTTP valida antes)
+  assert.equal(repo.addFeedback("nope", 3, null), undefined);
+  assert.throws(() => repo.addFeedback(planId, 6, null), /CHECK/);
+  assert.equal(at(0)?.feedback?.rating, 3);
+}
+
 // ---------- aprovações ----------
 const ap = repo.createApproval(s1.id, d.set.id, "spotify_create_playlist_from_order", { ids: ["t9"] });
 assert.equal(ap.status, "pending");
@@ -178,4 +209,4 @@ try {
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
-console.log("[ok] repo: sessões, versões e snapshot, turnos, migração v1 para v2, máquina de estados, planos e aprovações");
+console.log("[ok] repo: sessões, versões e snapshot, turnos, migração v1 para v2, máquina de estados, planos com nota 1–5 e aprovações");

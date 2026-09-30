@@ -7,6 +7,9 @@ import { formatCamelot, parseKey } from "./camelot.js";
  * Guarda só o que o usuário informou (BPM, tom, energia, estilo, rótulo livre).
  * Metadados do Spotify (nome, artista, capa) não são persistidos: cada leitura
  * vem direto da API, em linha com a regra de não cachear conteúdo do Spotify.
+ *
+ * P12: a leitura (`get`/`getMany`) devolve cópias; sem energia do usuário, a energia vem do `energy` da
+ * ReccoBeats guardado nas notas, marcada em `energy_estimated`. O cache e o arquivo nunca recebem o derivado.
  */
 export class AnalysisStore {
   private readonly path: string;
@@ -42,14 +45,14 @@ export class AnalysisStore {
   }
 
   get(trackId: string): TrackAnalysis | undefined {
-    return this.load().get(trackId);
+    return withEstimate(this.load().get(trackId));
   }
 
   getMany(trackIds: string[]): Map<string, TrackAnalysis> {
     const map = this.load();
     const out = new Map<string, TrackAnalysis>();
     for (const id of trackIds) {
-      const entry = map.get(id);
+      const entry = withEstimate(map.get(id));
       if (entry) out.set(id, entry);
     }
     return out;
@@ -64,7 +67,10 @@ export class AnalysisStore {
     const map = this.load();
     const saved: TrackAnalysis[] = [];
     const now = new Date().toISOString();
-    for (const entry of entries) {
+    for (const given of entries) {
+      // ponytail: entrada vinda de um get() traz energia derivada; descarta a estimativa em vez de gravá-la
+      const { energy_estimated, ...rest } = given;
+      const entry = energy_estimated ? { ...rest, energy: undefined } : rest;
       const key = parseKey(entry.camelot);
       if (!key) throw new Error(`Tom inválido para ${entry.track_id}: "${entry.camelot}". Use Camelot (8A) ou notação musical (Am, F#m, C).`);
       const previous = map.get(entry.track_id);
@@ -90,6 +96,17 @@ export class AnalysisStore {
     if (removed) this.persist();
     return removed;
   }
+}
+
+/** `energy 0.62 (ReccoBeats)`, como o merge.ts escreve; exige o número para não casar com "tom da web (ReccoBeats)". */
+const RECCO_ENERGY = /\benergy (\d+(?:\.\d+)?) \(ReccoBeats\)/;
+
+/** P12: energia 1–10 = clamp(round(1 + x × 9)) a partir do `energy` 0–1 da ReccoBeats; só quando não há energia do usuário. */
+function withEstimate(entry: TrackAnalysis | undefined): TrackAnalysis | undefined {
+  if (!entry || entry.energy !== undefined) return entry;
+  const x = entry.notes?.match(RECCO_ENERGY)?.[1];
+  if (x === undefined) return entry;
+  return { ...entry, energy: Math.min(10, Math.max(1, Math.round(1 + Number(x) * 9))), energy_estimated: true };
 }
 
 function stripUndefined<T extends object>(value: T): Partial<T> {

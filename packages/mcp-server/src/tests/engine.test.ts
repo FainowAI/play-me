@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { formatCamelot, harmonicMatch, parseKey } from "../services/camelot.js";
 import { ECHO_ONLY_PENALTY } from "../constants.js";
 import { bpmDistance, buildSet, echoOnly, scoreTransition, targetEnergy } from "../services/dj-engine.js";
@@ -132,5 +133,172 @@ assert.equal(toneWarnings.length, 1, "um único aviso de tom a confirmar");
 assert.ok(toneWarnings[0]?.startsWith("2 faixa(s) com tom a confirmar no Mixar:"));
 assert.ok(toneWarnings[0]?.includes("Adored – J. Worra") && toneWarnings[0]?.includes("The Sun Can't Compare – Space Motion"));
 
+// ---------- Regressão P10: sem duration_minutes/max_tracks o resultado é idêntico ao do motor anterior ----------
+// Valores capturados com o buildSet de antes do P10 (sha256 dos ids da ordem, 16 hex, e nota média).
+const orderHash = (r: { order: { track_id: string }[] }): string =>
+  createHash("sha256").update(r.order.map((p) => p.track_id).join(",")).digest("hex").slice(0, 16);
+const LEGACY_KEYS = "curve,weights,average_score,order,transitions,weak_transitions,problem_tracks,bridges,warnings";
+
+function lcg(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
+}
+const STYLES = ["tech house", "melodic house", "techno", "melodic techno", "house"];
+/** Pool sintético determinístico (nunca música comercial): BPM 118–132, 24 tons, energia 1–10. */
+function pool(size: number, seed: number): TrackAnalysis[] {
+  const rnd = lcg(seed);
+  return Array.from({ length: size }, (_, i) => ({
+    track_id: `syn${String(i).padStart(19, "0")}`,
+    label: `S${String(i).padStart(3, "0")}`,
+    bpm: 118 + Math.floor(rnd() * 15),
+    camelot: `${1 + Math.floor(rnd() * 12)}${rnd() < 0.5 ? "A" : "B"}`,
+    energy: 1 + Math.floor(rnd() * 10),
+    style: STYLES[Math.floor(rnd() * STYLES.length)],
+    updated_at: "2026-01-01T00:00:00.000Z",
+  }));
+}
+
+assert.deepEqual(
+  result.order.map((p) => p.label),
+  [
+    "Don't This – Fairtone",
+    "Let It Go (VC Remix)",
+    "Fool's Paradise – Mees Salomé",
+    "Voice of Rem – Rem Siman",
+    "Nothing Wrong – OMRI.",
+    "All By Myself – Mita Gami",
+    "Ghost Dance – Brunello",
+    "fractured light – kalm",
+    "Lonesome – Charlotte de Witte",
+    "Level One – Boris Brejcha",
+    "Like I Like It – Mau P",
+    "Bald Ponytail – Kaufmann",
+    "Talkin' Too Much – Ribguga",
+    "Deceiver VIP – Chris Lake",
+    "Moon Rocks – Enrico Sangiuliano",
+    "Paranoia – JUNTARO",
+    "Freak – GENESI, MEDUZA",
+    "Cruisin' – Jeff Sorkowitz",
+    "Adored – J. Worra",
+    "Science Fiction – Brunello",
+    "The Sun Can't Compare – Space Motion",
+    "You Were Right – RÜFÜS DU SOL",
+  ],
+  "Eletro sem parâmetros: mesma ordem de antes",
+);
+const legacyCases: [string, ReturnType<typeof buildSet>, string, number][] = [
+  ["Eletro 22", result, "c29cd617af6737fb", 0.83],
+  ["pool 100 classic (n > 90: abertura segue em 6 candidatos)", buildSet(pool(100, 7), { curve: "classic" }), "a5e484fcc6ffe91d", 0.8],
+  ["pool 100 peak_time", buildSet(pool(100, 7), { curve: "peak_time" }), "c2d928d06472cff8", 0.81],
+  [
+    "pool 40 com abertura e fechamento fixos",
+    buildSet(pool(40, 3), { curve: "warm_up", startTrackId: pool(40, 3)[5]?.track_id, endTrackId: pool(40, 3)[9]?.track_id }),
+    "52b71d030f12aec7",
+    0.75,
+  ],
+  ["pool 60 sunrise, feixe 20", buildSet(pool(60, 11), { curve: "sunrise", beamWidth: 20 }), "feb4b22ac5f9add8", 0.77],
+];
+for (const [name, r, hash, average] of legacyCases) {
+  assert.equal(orderHash(r), hash, `${name}: ordem mudou`);
+  assert.equal(r.average_score, average, `${name}: nota média mudou`);
+  assert.equal(Object.keys(r).join(","), LEGACY_KEYS, `${name}: sem parâmetros o resultado não ganha campos`);
+}
+// Durações sozinhas não ligam a seleção: só max_tracks ou targetDurationMs
+const idleDurations = buildSet(eletro, { curve: "classic", durations: new Map(eletro.map((x) => [x.track_id, 300_000])) });
+assert.equal(orderHash(idleDurations), orderHash(result));
+assert.equal(idleDurations.pool_size, undefined);
+
+// ---------- P10: seleção por quantidade ----------
+const big = pool(30, 5);
+const durations = new Map(big.map((x, i) => [x.track_id, 240_000 + ((i * 7919) % 120_001)]));
+const sumOf = (ids: string[]): number => ids.reduce((sum, trackId) => sum + (durations.get(trackId) as number), 0);
+const picked = buildSet(big, { curve: "classic", maxTracks: 8, durations });
+const pickedIds = picked.order.map((p) => p.track_id);
+assert.equal(picked.order.length, 8);
+assert.equal(picked.transitions.length, 7);
+assert.equal(picked.pool_size, 30);
+assert.equal(new Set(pickedIds).size, 8, "sem repetição");
+assert.equal(picked.duration_ms, sumOf(pickedIds), "duração = soma das durações da ordem");
+assert.ok(picked.warnings.some((w) => /^Selecionadas 8 de 30 faixas analisadas \(~\d+ min\)$/.test(w)), picked.warnings.join(" | "));
+assert.ok(picked.problem_tracks.every((p) => pickedIds.includes(p.track_id)), "faixas não escolhidas não entram em problem_tracks");
+// a curva vale para as 8 posições: abertura baixa, pico na segunda metade, desvio pequeno do alvo
+const energies = picked.order.map((p) => p.energy as number);
+const deviation = picked.order.reduce((sum, p) => sum + Math.abs((p.energy as number) - p.target_energy), 0) / picked.order.length;
+assert.ok((energies[0] as number) <= 5, `abertura com energia ${energies[0]}`);
+assert.ok(energies.indexOf(Math.max(...energies)) >= 4, "o pico fica na segunda metade");
+assert.ok(deviation <= 1.5, `desvio médio do alvo ${deviation.toFixed(2)}`);
+assert.ok(
+  picked.average_score > buildSet(big.slice(0, 8), { curve: "classic" }).average_score,
+  "escolher entre 30 bate ordenar as 8 primeiras",
+);
+assert.deepEqual(buildSet(big, { curve: "classic", maxTracks: 8, durations }).order.map((p) => p.track_id), pickedIds, "determinístico");
+
+// aviso sem minutos quando falta a duração de alguma faixa da ordem; duration_ms nulo
+const gap = new Map<string, number | null>(durations).set(pickedIds[3] as string, null);
+const gapped = buildSet(big, { curve: "classic", maxTracks: 8, durations: gap });
+assert.equal(gapped.duration_ms, null);
+assert.ok(gapped.warnings.includes("Selecionadas 8 de 30 faixas analisadas"));
+assert.equal(buildSet(big, { curve: "classic", maxTracks: 8 }).duration_ms, null, "sem durações conhecidas");
+
+// abertura e fechamento fixos valem dentro da seleção (N < n)
+const startId = big[4]?.track_id as string;
+const endId = big[11]?.track_id as string;
+const fixed = buildSet(big, { curve: "classic", maxTracks: 8, startTrackId: startId, endTrackId: endId });
+assert.equal(fixed.order.length, 8);
+assert.equal(fixed.order[0]?.track_id, startId);
+assert.equal(fixed.order[7]?.track_id, endId);
+
+// pedido maior que o pool: entram todas, com aviso
+const everything = buildSet(big, { curve: "classic", maxTracks: 40, durations });
+assert.equal(everything.order.length, 30);
+assert.ok(everything.warnings.some((w) => w.includes("Pedido de ~40 faixas excede o máximo de 30")));
+
+// ---------- P10: seleção por duração ----------
+const target = 90 * 60_000;
+const meanMs = [...durations.values()].reduce((sum, ms) => sum + ms, 0) / durations.size;
+const byDuration = buildSet(big, { curve: "classic", targetDurationMs: target, durations });
+const expectedN = Math.round(target / meanMs);
+assert.equal(byDuration.order.length, expectedN, "N = alvo / média das durações do pool");
+assert.equal(byDuration.duration_ms, sumOf(byDuration.order.map((p) => p.track_id)));
+assert.ok(Math.abs((byDuration.duration_ms as number) - target) / target < 0.2, `duração ${byDuration.duration_ms} longe do alvo`);
+assert.ok(byDuration.warnings.some((w) => new RegExp(`^Selecionadas ${expectedN} de 30 faixas analisadas \\(~\\d+ min\\)$`).test(w)));
+assert.equal(buildSet(big, { curve: "classic", targetDurationMs: 60_000, durations }).order.length, 2, "mínimo de 2 faixas");
+assert.throws(() => buildSet(big, { curve: "classic", targetDurationMs: target }), /Sem a duração das faixas/);
+// faixa sem duração fica fora da média e ainda pode ser escolhida
+const partial = new Map<string, number | null>(durations).set(big[0]?.track_id as string, null);
+const partialMean = [...partial.values()].filter((ms): ms is number => ms !== null).reduce((sum, ms) => sum + ms, 0) / 29;
+assert.equal(buildSet(big, { curve: "classic", targetDurationMs: target, durations: partial }).order.length, Math.round(target / partialMean));
+
+// pool grande (n > 90): 12 candidatos de abertura, N posições e a curva continuam valendo
+const huge = pool(120, 21);
+const hugeSet = buildSet(huge, { curve: "peak_time", maxTracks: 15, durations: new Map(huge.map((x) => [x.track_id, 300_000])) });
+assert.equal(hugeSet.order.length, 15);
+assert.equal(hugeSet.pool_size, 120);
+assert.equal(hugeSet.duration_ms, 15 * 300_000);
+assert.ok(hugeSet.order.every((p, i, all) => all.findIndex((q) => q.track_id === p.track_id) === i), "sem repetição");
+
+// ---------- P10: cabeçalho do markdown ----------
+const pickedMd = setToMarkdown(picked);
+assert.ok(
+  pickedMd.startsWith(`# Set proposto · 8 faixas · ${Math.round((picked.duration_ms as number) / 60_000)} min · curva "classic"`),
+  pickedMd.split("\n")[0],
+);
+assert.ok(setToMarkdown(result).startsWith('# Set proposto · 22 faixas · curva "classic"'), "sem duração, sem minutos");
+assert.ok(!setToMarkdown(result).includes("energia estimada"), "sem estimativa, sem legenda");
+
+// ---------- P12: energia estimada no relatório ----------
+const flagged = pool(6, 2).map((x, i) => (i < 2 ? { ...x, energy_estimated: true } : x));
+const flaggedSet = buildSet(flagged, { curve: "classic" });
+for (const position of flaggedSet.order) {
+  assert.equal(position.energy_estimated, flagged.find((x) => x.track_id === position.track_id)?.energy_estimated === true);
+}
+assert.equal(flaggedSet.order.filter((p) => p.energy_estimated).length, 2);
+assert.ok(result.order.every((p) => p.energy_estimated === false), "energia do Mixar/usuário não é estimativa");
+assert.equal(buildSet([{ ...eletro[0], energy: undefined } as TrackAnalysis, ...eletro.slice(1, 5)], { curve: "classic" }).order.filter((p) => p.energy === null).length, 1);
+const flaggedMd = setToMarkdown(flaggedSet);
+assert.match(flaggedMd, /E\d+\* \(alvo/);
+assert.match(flaggedMd, /\* energia estimada: energy da ReccoBeats/);
+
 console.log(setToMarkdown(result));
 console.log(`\n[ok] ${eletro.length} faixas em ${elapsed} ms · nota média ${result.average_score} · fixado: ${pinned.average_score}`);
+console.log("[ok] regressão sem parâmetros (5 cenários), seleção por quantidade e duração (P10), energia estimada no relatório (P12)");

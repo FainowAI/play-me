@@ -61,7 +61,7 @@ export function App() {
       )}
       {overlay?.kind === "transition" && version && (
         <Overlay open kind="drawer" side="right" width={820} padding="24px 32px" gap={20} label={`Transição ${overlay.position} para ${overlay.position + 1}`} onClose={app.closeOverlay}>
-          <TransitionWindow version={version} position={overlay.position} onClose={app.closeOverlay} onSend={say} />
+          <TransitionWindow version={version} position={overlay.position} onClose={app.closeOverlay} onSend={say} onRate={app.rate} />
         </Overlay>
       )}
       {overlay?.kind === "track" && version && (

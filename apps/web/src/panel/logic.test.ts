@@ -32,6 +32,12 @@ assert.deepEqual(arcPoints([track(1, null, 7.3), track(2, 8, 3)]), [{ energy: 7.
 const snap = (transitions: number): SetSnapshot => ({ curve: "classic", average_score: 0.84, order: eletro, transitions: Array.from({ length: transitions }, () => ({}) as TransitionReport), weak_transitions: [], problem_tracks: [], warnings: [] });
 assert.equal(metaLine(snap(20)), "21 faixas · nota média 0,84 · curva classic");
 assert.equal(metaLine(snap(0)), "21 faixas · curva classic");
+// duração (Sprint 4): logo depois das faixas, arredondada ao minuto; null (o Spotify não informou alguma) ou ausente não mostra nada
+assert.equal(metaLine({ ...snap(20), duration_ms: 5_460_000 }), "21 faixas · 91 min · nota média 0,84 · curva classic");
+assert.equal(metaLine({ ...snap(0), duration_ms: 5_460_000 }), "21 faixas · 91 min · curva classic");
+assert.equal(metaLine({ ...snap(20), duration_ms: 5_369_999 }), "21 faixas · 89 min · nota média 0,84 · curva classic"); // 89,4999
+assert.equal(metaLine({ ...snap(20), duration_ms: 5_370_000 }), "21 faixas · 90 min · nota média 0,84 · curva classic"); // 89,5 sobe
+assert.equal(metaLine({ ...snap(20), duration_ms: null }), "21 faixas · nota média 0,84 · curva classic");
 
 // pesos: sempre inteiros, ≥ 0, somando 100, com o peso movido exatamente no valor pedido
 const starts: Weights[] = [

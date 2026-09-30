@@ -42,6 +42,10 @@ Toda decisão nova entra aqui e no quadro do projeto: https://claude.ai/artifact
 | D34 | 30/09/2026 | Interface `apps/web` construída tela por tela a partir do canvas (D31): React 19 + Vite 8 + TypeScript strict + Tailwind 4 lendo os tokens; os 15 componentes do design system portados para TSX; orb de pensamento do `thinking-orbs` (única animação contínua, segue o tema sozinho); hover 120 ms, abrir 200 ms (`<dialog>` nativo com scrim), reordenar 400 ms (View Transitions nas faixas); `prefers-reduced-motion` desliga tudo (ADR 0007). | Pedido do usuário: as mesmas telas e animações do artefato; DESIGN.md §4 e §9. |
 | D35 | 30/09/2026 | O SQLite guarda, por versão do set, o snapshot do `dj_build_set` (rótulo "Título — Artista", BPM, tom, energia, origem do dado) e os turnos do chat; playlists e status vêm do cliente Spotify do MCP; pesos da nota em `data/settings.json`, injetados no prompt do agente; a conversa aberta vive no hash da URL (ADR 0007). Revisa a nota da Sprint 2 de "só IDs no banco". | Sem nome de faixa o painel e as versões antigas não existem; recarregar perdia a conversa. Uso pessoal, banco local. |
 | D36 | 30/09/2026 | O gate de envio recusa `spotify_create_playlist_from_order` cujos IDs não pertencem ao set atual (snapshot da última versão) antes de pedir o clique. | No teste real o Haiku mandou 23 IDs inventados ao gate; o usuário não tem como conferir IDs no card. |
+| D37 | 30/09/2026 | Tamanho do set (fecha P10): `dj_build_set` ganha `duration_minutes` e `max_tracks`, lê a playlist inteira (até 600) e seleciona pela busca em feixe com a duração real de cada faixa (`duration_ms` do Spotify); sem os parâmetros o resultado é idêntico ao anterior (5 goldens de regressão). O agente só traduz "1h30" → 90 (ADR 0008). | "Monte um set da Eletro, 1h30" passou de 137 faixas para 21 faixas · 103 min; o Haiku nunca escolhe IDs. |
+| D38 | 30/09/2026 | Energia da web (fecha P12): o `energy` da ReccoBeats (0–1, já nas notas do store) vira energia 1–10 estimada na leitura do store (`energy_estimated`), nunca gravada; só onde não há energia do Mixar ou do usuário (ADR 0008). | Sem energia a curva não tinha efeito nas 414 faixas da web; sets sem parâmetros podem mudar de ordem por isso (não é regressão do P10). |
+| D39 | 30/09/2026 | Jev em TypeScript dentro do MCP (`services/jev.ts`, `fetch` puro, sem pacote novo): `jev_compare` e `transition_plan` com `use_jev`; state só numérico (regra 8); o Jev decide só com confiança ≥ `JEV_MIN_CONFIDENCE` (0,7), senão regras (regra 9); cada chamada em `~/.spotify-dj-mcp/jev-calls.jsonl`. Revisa o local previsto (analisador Python) e o D28 (ADR 0008). | Acesso real confirmado em 30/09 (HTTP 200, jev-1.13.0, 0,3 s); 20 pares da [DJ MIX] Eletro: 95% de acordo no tipo, 100% entre respostas confiantes, Pearson 0,78 nas notas. |
+| D40 | 30/09/2026 | Notas 1–5 por passagem (7.1.1): `POST /api/plans/:id/feedback` grava em `transition_feedback` (a última vale) e a Transição expandida mostra a nota; planos de versão já gravada não são regravados (a chave estrangeira das notas quebraria o próximo ajuste). A recalibração (7.3.1) espera notas reais (ADR 0008). | Critério da Sprint 4; sem notas ainda não há o que recalibrar. |
 
 EAP e roadmap: `docs/eap_play-me_fainow.md` (29/09/2026).
 
@@ -49,13 +53,14 @@ EAP e roadmap: `docs/eap_play-me_fainow.md` (29/09/2026).
 
 | # | Pergunta | Recomendação |
 |---|---|---|
-| P10 | Tamanho do set: `dj_build_set` ordena TODAS as faixas analisadas da playlist (137 na Eletro); "1h30" não limita nada. | Sprint 4: parâmetro de duração ou quantidade no montador, com seleção pela curva antes da ordenação. |
-| P11 | Haiku 4.5 com resultado grande de ferramenta: o SDK grava o resultado em arquivo e o modelo tenta "ler o arquivo" (bash, PowerShell), repetindo `dj_build_set` e gastando turnos. | O prompt já proíbe; se persistir, `PLAYME_MODEL=claude-sonnet-5-5` ou reduzir a saída da ferramenta (P10 ajuda). |
-| P12 | Faixas da web não têm energia: "mais energia no meio" não muda a ordem (ordem igual = sem versão nova) e a curva usa só o alvo. | Sprint 4: usar o `energy` da ReccoBeats (já nas notas do store) como estimativa marcada com *. |
+| P10 | Tamanho do set. | Fechada pela D37 (30/09). |
+| P11 | Haiku 4.5 com resultado grande de ferramenta: o SDK grava o resultado em arquivo e o modelo tenta "ler o arquivo" (bash, PowerShell), repetindo `dj_build_set`. | Com o set de ~20 faixas (D37) o resultado ficou pequeno; observar. Se voltar, `PLAYME_MODEL=claude-sonnet-5-5`. |
+| P12 | Energia das faixas da web. | Fechada pela D38 (30/09). |
+| P13 | Duração aproximada: o alvo de 90 min deu 103 min (N = alvo ÷ média do pool; as escolhidas eram mais longas). | Depois da seleção, cortar a última faixa enquanto a soma passar do alvo + meia faixa, ou N pela mediana. Uma linha no `buildSet`. |
+| P14 | O agente passa o NOME da playlist a ferramentas que pedem id/link (`jev_compare` falhou na 1ª tentativa e se recuperou listando as playlists). | Aceitar nome de playlist do usuário em `resolveTrackIds` (busca em `spotify_list_my_playlists`) ou dizer no prompt para usar o id. |
 
-## Próximo passo (30/09/2026)
+## Próximo passo (30/09/2026, noite)
 
-1. Sprints 0 a 3 entregues: Fase P (ADR 0005), servidor local (ADR 0006) e interface (ADR 0007). Fluxo ponta a ponta verificado no navegador em 30/09: pedido de set, card de aprovação, rejeição (set volta a rascunho) e aprovação com o clique do usuário (playlist "[DJ MIX] Eletro - Techno Set", 23 faixas, privada).
-2. Sprint 4 (Fase K): prompt 07 com o `feature-builder`. Entram P10 (tamanho do set), P12 (energia da web), as notas 1–5 e a validação do Jev.
-3. Pendente da Fase P: confirmar no app outros presets do Mix além de Fade e Rise (2.2.1).
-4. Canvas: corrigir os textos divergentes (GetSongBPM e Deezer → ReccoBeats, "Jev sem acesso", 548 faixas) sem mexer no layout.
+1. Sprints 0 a 4 entregues em 29 e 30/09: Fase P (ADR 0005), servidor (ADR 0006), interface (ADR 0007) e Fase K (ADR 0008). Verificado ao vivo: "1h30" → 21 faixas · 103 min; nota gravada e relida; Jev comparado em 20 pares (95% no tipo).
+2. Calibração de verdade (7.3.1) espera notas reais: use o set, dê notas na Transição expandida e depois peça "recalibre os pesos com as minhas notas".
+3. Pendentes: P11 (observar), P13 (duração aproximada), P14 (nome de playlist), presets do Mix além de Fade e Rise (2.2.1), textos antigos do canvas, quadro do projeto a sincronizar (D34–D40, ADRs 0007 e 0008).

@@ -25,6 +25,8 @@ export interface TransitionWindowProps {
   position: number; // 1-based: plano `plans[position-1]`, faixas `order[position-1]` (A) e `order[position]` (B)
   onClose: () => void;
   onSend: (message: string) => void; // "Trocar B" → pede a troca da faixa position+1 no chat
+  /** Sprint 4 (7.1.1): grava a nota 1–5 do plano; a shell relê o set depois (o plano volta com `feedback`). Lança ApiError. */
+  onRate: (planId: string, rating: number) => Promise<void>;
 }
 
 export interface TrackDrawerProps {

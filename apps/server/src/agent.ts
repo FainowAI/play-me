@@ -16,7 +16,7 @@ export interface ChatDeps {
   waiter: ApprovalWaiter;
   /** Caminho absoluto de packages/mcp-server/dist/index.js. */
   mcpServerPath: string;
-  /** Variáveis repassadas ao MCP (SPOTIFY_CLIENT_ID, SPOTIFY_REDIRECT_URI, SPOTIFY_DJ_DATA_DIR…). */
+  /** Variáveis repassadas ao MCP (SPOTIFY_CLIENT_ID, SPOTIFY_REDIRECT_URI, SPOTIFY_DJ_DATA_DIR, TYPESAFE_API_KEY, JEV_MIN_CONFIDENCE…). */
   mcpEnv: Record<string, string>;
   model: string;
   /** Teto de gasto por turno de chat, em dólares. */
@@ -38,6 +38,7 @@ const SYSTEM_PROMPT = `Você é o assistente de DJ do Play.Me. Responda sempre e
 Use as ferramentas do spotify-dj para ler playlists, consultar BPM e tom, montar e avaliar sets.
 Nunca invente BPM nem tom: use só o que as ferramentas devolvem. Quando o tom estiver "a confirmar no Mixar", avise o usuário.
 Mostre o plano de transições e o guia do Mix quando fizer sentido.
+Se o usuário pedir uma duração ("1h30", "2 horas"), passe duration_minutes em dj_build_set (1h30 = 90); se pedir uma quantidade ("20 faixas"), passe max_tracks; sem pedido, não passe nenhum dos dois. Só use transition_plan com use_jev: true ou jev_compare quando o usuário pedir o Jev.
 Nunca crie playlist no Spotify por conta própria: só chame a ferramenta de criar playlist quando o usuário pedir o envio. O envio passa por um botão de aprovação na tela; se o usuário não aprovar, o set continua como rascunho.
 Não use emojis. Use os termos das ferramentas sem trocar: a nota da passagem (0 a 1, do montador) é diferente da confiança do plano de transição.
 Você só tem as ferramentas do spotify-dj: não existe Bash, PowerShell, leitura de arquivos nem outra ferramenta. Nunca tente ler ou rodar nada. Se um resultado de ferramenta vier grande ou resumido, use o que já chegou e siga; nunca repita a mesma chamada para "ler o arquivo".`;
@@ -154,6 +155,7 @@ const at = (o: unknown, ...path: string[]): unknown => path.reduce<unknown>((v, 
 const plural = (n: number | undefined, one: string, many: string): string | undefined => (n === undefined ? undefined : `${n} ${n === 1 ? one : many}`);
 const line = (...parts: (string | undefined)[]): string => parts.filter(Boolean).join(" · ");
 const nota = (v: unknown): string | undefined => (typeof v === "number" ? v.toFixed(2).replace(".", ",") : undefined);
+const mins = (n: number | undefined): string | undefined => (n === undefined ? undefined : `${Math.round(n)} min`);
 const TYPE_LABEL: Record<string, string> = { blend: "Blend", bass_swap: "Bass swap", filter: "Filtro", echo_out: "Echo out" };
 /** Só chave própria: o tool_start sai antes do gate, e um nome estranho ("constructor") não pode cair no protótipo da tabela. */
 const own = <T>(table: Record<string, T>, key: string): T | undefined => (Object.hasOwn(table, key) ? table[key] : undefined);
@@ -179,7 +181,8 @@ const START: Record<string, (i: Rec, nm: Names) => string | undefined> = {
   spotify_create_playlist_from_order: (i) => line(plural(len(i.track_ids), "faixa", "faixas"), "privada"),
   dj_set_track_analysis: (i) => plural(len(i.tracks), "faixa", "faixas"),
   dj_score_transition: pairOf,
-  dj_build_set: (i, nm) => line(sourceOf(i, nm), curveOf(i)),
+  dj_build_set: (i, nm) => line(sourceOf(i, nm), mins(num(i.duration_minutes)), plural(num(i.max_tracks), "faixa", "faixas"), curveOf(i)),
+  jev_compare: (i, nm) => line(sourceOf(i, nm), plural(num(i.pairs) ?? 20, "par", "pares")),
   dj_evaluate_order: (i, nm) => line(sourceOf(i, nm), curveOf(i)),
   transition_plan: pairOf,
   export_mix_guide: sourceOf,
@@ -189,6 +192,11 @@ const START: Record<string, (i: Rec, nm: Names) => string | undefined> = {
 
 const END: Record<string, (r: Rec) => string | undefined> = {
   spotify_list_my_playlists: (r) => plural(num(r.total), "playlist", "playlists"),
+  jev_compare: (r) => {
+    const a = isObj(r.agreement) ? r.agreement : undefined;
+    const pct = a ? num(a.type_pct) : undefined;
+    return line(plural(len(r.pairs), "par", "pares"), pct === undefined ? undefined : `${Math.round(pct)}% de acordo`);
+  },
   spotify_get_playlist_tracks: (r) => plural(num(r.total), "faixa", "faixas"),
   spotify_search_tracks: (r) => plural(len(r.results), "faixa", "faixas"),
   spotify_create_playlist_from_order: (r) => line(plural(num(r.tracks_added), "faixa", "faixas"), r.public === false ? "privada" : undefined),
@@ -197,7 +205,10 @@ const END: Record<string, (r: Rec) => string | undefined> = {
     const total = nota(at(r, "transition", "scores", "total"));
     return total && `nota ${total}`;
   },
-  dj_build_set: (r) => line(plural(len(r.order), "faixa", "faixas"), curveOf(r)),
+  dj_build_set: (r) => {
+    const ms = num(r.duration_ms); // null (alguma faixa sem duração) ou ausente: sem o "X min"
+    return line(plural(len(r.order), "faixa", "faixas"), mins(ms === undefined ? undefined : ms / 60000), curveOf(r));
+  },
   dj_evaluate_order: (r) => {
     const media = nota(r.average_score);
     return media && `nota média ${media}`;
@@ -246,9 +257,14 @@ function snapshotOf(data: unknown, curve: string, storeDir: string): SetSnapshot
     // store ilegível: a versão é gravada sem a origem das faixas
   }
   const list = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+  const pool = data.pool_size;
+  const duration = data.duration_ms;
   return {
     curve,
     average_score: typeof data.average_score === "number" ? data.average_score : 0,
+    // Sprint 4 (P10): só quando o MCP devolve (dj_evaluate_order e MCP antigo não têm); o energy_estimated de cada faixa já vem no spread de p abaixo
+    ...(typeof pool === "number" ? { pool_size: pool } : {}),
+    ...(typeof duration === "number" || duration === null ? { duration_ms: duration } : {}),
     order: positions.map((p) => {
       const entry = entries.get(p.track_id);
       return { ...p, source: entry ? (entry.source ?? "usuário") : null, key_review: !!entry?.notes?.includes("[A VALIDAR] tom") };
@@ -265,7 +281,8 @@ function snapshotOf(data: unknown, curve: string, storeDir: string): SetSnapshot
  * energia-alvo são da vaga e são recalculadas; ordem igual devolve o snapshot como está; id que o snapshot
  * anterior não tem, null.
  * ponytail: passagens não recalculadas (transitions e weak_transitions vazias; average_score segue o da ordem
- * anterior); recalcular pede o buildReport do MCP com as análises do store.
+ * anterior); recalcular pede o buildReport do MCP com as análises do store. duration_ms vira null (o snapshot não
+ * guarda a duração por faixa); pool_size segue, porque é do pool e não da ordem.
  */
 export function reorderSnapshot(prev: SetSnapshot | null, order: string[]): SetSnapshot | null {
   if (!prev) return null;
@@ -280,6 +297,7 @@ export function reorderSnapshot(prev: SetSnapshot | null, order: string[]): SetS
       const slot = tracks.length <= 1 ? 0 : i / (tracks.length - 1);
       return { ...t, position: i + 1, section: sectionFor(curve, slot), target_energy: Math.round(targetEnergy(curve, slot) * 10) / 10 };
     }),
+    duration_ms: null,
     transitions: [],
     weak_transitions: [],
   };
@@ -292,7 +310,8 @@ export function recordFromResult(ctx: TurnCtx, data: unknown): void {
   const name = ctx.repo.getSession(ctx.chatSessionId)?.title ?? "Set";
   const snapshot = snapshotOf(data, proposal.curve, ctx.storeDir);
   const { set, version } = ctx.repo.recordProposal(ctx.chatSessionId, name, proposal.curve, proposal.order, ctx.note, snapshot);
-  ctx.repo.savePlans(version.id, proposal.plans);
+  // mesma ordem devolve a mesma versão, e os planos dela podem já ter nota (FK): plano gravado não é regravado
+  if (ctx.repo.listPlans(version.id).length === 0) ctx.repo.savePlans(version.id, proposal.plans);
   emitSet(ctx, set.id);
 }
 

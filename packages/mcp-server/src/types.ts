@@ -28,6 +28,7 @@ export interface TrackAnalysis {
   bpm: number;
   camelot: string; // normalizado, ex.: "8A"
   energy?: number; // 1..10
+  energy_estimated?: boolean; // P12: energia derivada do `energy` da ReccoBeats na leitura; nunca persistida
   style?: string; // ex.: "melodic house", "tech house", "techno"
   vocal?: boolean;
   label?: string; // rótulo livre digitado pelo usuário, ex.: "Adored – J. Worra"
@@ -105,6 +106,7 @@ export interface SetPosition {
   bpm: number;
   camelot: string;
   energy: number | null;
+  energy_estimated: boolean; // true só quando derivada da ReccoBeats (P12); a do Mixar/usuário é false
   target_energy: number;
   section: string;
 }
@@ -128,11 +130,22 @@ export interface SetResult {
   bridges: BridgeSuggestion[];
   warnings: string[];
   plans?: TransitionPlan[]; // um por passagem, na ordem de `transitions` (preenchido pelas ferramentas)
+  // P10: só quando o set foi pedido por duration_minutes/max_tracks (sem eles o resultado não traz estes campos)
+  pool_size?: number; // faixas analisadas consideradas na seleção
+  duration_ms?: number | null; // soma das durações da ordem; null se alguma faltar
 }
 
 // ---------- Fase P: planejador por metadados (D30) ----------
 
 export type TransitionType = "blend" | "bass_swap" | "filter" | "echo_out";
+
+/** O que o Jev respondeu sobre o par (7.2): tipo, nota 1–5 e a confiança de cada resposta. */
+export interface JevInsight {
+  type: TransitionType;
+  type_confidence: number; // 0..1
+  score: number; // 1..5
+  score_confidence: number; // 0..1
+}
 
 /** Plano de transição sem estrutura por compasso: só BPM, tom e energia. */
 export interface TransitionPlan {
@@ -154,6 +167,8 @@ export interface TransitionPlan {
   alerts: string[];
   reason: string; // português, uma frase
   planner_version: "meta-1";
+  source?: "rules" | "jev"; // quem decidiu o tipo; só em transition_plan com use_jev
+  jev?: JevInsight | null; // resposta do Jev (mesmo quando as regras venceram); null = sem resposta
 }
 
 /** Uma passagem do guia para o Mix do app do Spotify (sem API: o usuário aplica à mão). */

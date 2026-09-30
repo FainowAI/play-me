@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import type { Approval, ChatSession, PlanInput, PlanRow, ServerEvent, SetRow, SetSnapshot, SetStatus, SetVersion, Turn } from "./types.js";
+import type { Approval, ChatSession, PlanInput, PlanRow, ServerEvent, SetRow, SetSnapshot, SetStatus, SetVersion, TransitionFeedback, Turn } from "./types.js";
 
 export class InvalidTransitionError extends Error {
   constructor(from: SetStatus, to: SetStatus) {
@@ -34,8 +34,11 @@ export interface Repo {
   recordProposal(chatSessionId: string, name: string, curve: string, order: string[], note: string | null, snapshot: SetSnapshot | null): { set: SetRow; version: SetVersion };
   listVersions(setId: string): SetVersion[]; // versão 1 primeiro
   latestVersion(setId: string): SetVersion | undefined;
-  savePlans(versionId: string, plans: PlanInput[]): void; // substitui os planos da versão
-  listPlans(versionId: string): PlanRow[];
+  /** Substitui os planos da versão; lança FOREIGN KEY se algum já tem nota (quem chama não regrava plano existente). */
+  savePlans(versionId: string, plans: PlanInput[]): void;
+  listPlans(versionId: string): PlanRow[]; // cada plano com a última nota (`feedback`) ou null
+  /** Grava uma nota 1–5 da passagem (INSERT: a última vale, as antigas ficam); undefined se o plano não existe. */
+  addFeedback(planId: string, rating: number, notes: string | null): TransitionFeedback | undefined;
   /** Aplica a máquina de estados; lança InvalidTransitionError fora das transições permitidas. */
   setStatus(setId: string, status: SetStatus, spotify?: { playlist_id: string | null; url: string | null }): SetRow;
 
@@ -149,7 +152,17 @@ const toApproval = (r: Row): Approval => ({
 const toPlan = (r: Row): PlanRow => ({
   id: r.id, set_version_id: r.set_version_id, position: r.position, from_track: r.from_track, to_track: r.to_track,
   plan: JSON.parse(r.plan_json), planner_version: r.planner_version, score: r.score, created_at: r.created_at,
+  feedback: r.fb_rating === null ? null : { rating: r.fb_rating, notes: r.fb_notes, created_at: r.fb_created_at },
 });
+// plano + a última nota dele; created_at empata no mesmo milissegundo, então o rowid desempata; a nota entra com alias (p.* já traz id e created_at)
+// ponytail: sem índice em transition_feedback(plan_id): a tabela tem uma linha por nota dada; indexar (user_version 3) se passar de alguns milhares
+const PLANS_WITH_FEEDBACK = `
+  SELECT p.*, f.rating AS fb_rating, f.notes AS fb_notes, f.created_at AS fb_created_at
+  FROM transition_plans p
+  LEFT JOIN transition_feedback f ON f.id = (
+    SELECT x.id FROM transition_feedback x WHERE x.plan_id = p.id ORDER BY x.created_at DESC, x.rowid DESC LIMIT 1)
+  WHERE p.set_version_id = ?
+  ORDER BY p.position`;
 
 /** Abre (e migra) o banco. dbPath ":memory:" para testes. */
 export function openRepo(dbPath: string): Repo {
@@ -258,7 +271,14 @@ export function openRepo(dbPath: string): Repo {
         }
       });
     },
-    listPlans: (versionId) => all("SELECT * FROM transition_plans WHERE set_version_id = ? ORDER BY position", toPlan, versionId),
+    listPlans: (versionId) => all(PLANS_WITH_FEEDBACK, toPlan, versionId),
+    addFeedback(planId, rating, notes) {
+      if (!one("SELECT id FROM transition_plans WHERE id = ?", () => true, planId)) return undefined;
+      const f: TransitionFeedback = { rating, notes, created_at: now() };
+      db.prepare("INSERT INTO transition_feedback (id, plan_id, rating, notes, created_at) VALUES (?,?,?,?,?)")
+        .run(randomUUID(), planId, rating, notes, f.created_at);
+      return f;
+    },
     setStatus(setId, status, spotify) {
       const set = getSet(setId);
       if (!set) throw new Error(`Set inexistente: ${setId}.`);

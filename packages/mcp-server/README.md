@@ -79,9 +79,11 @@ claude mcp add spotify-dj -e SPOTIFY_CLIENT_ID=af28a5cf9c9d415e89402d0c342e6022 
 | `dj_set_track_analysis` | Salva BPM, tom, energia e estilo | Só local |
 | `dj_delete_track_analysis` | Apaga análises salvas | Só local |
 | `dj_score_transition` | Nota de uma passagem A → B | Não |
-| `dj_build_set` | Ordem otimizada por busca em feixe | Não |
+| `dj_build_set` | Ordem otimizada por busca em feixe; com `duration_minutes` ou `max_tracks`, escolhe as melhores faixas para o tamanho pedido | Não |
 | `dj_evaluate_order` | Relatório de uma ordem fixa | Não |
 | `dj_convert_key` | Tom musical ↔ Camelot | Não |
+| `transition_plan` | Plano de uma passagem A → B (tipo, compassos, troca de grave); com `use_jev` o Jev escolhe o tipo | Só local (chama o Jev com `use_jev`) |
+| `jev_compare` | Compara o Jev com o planejador de regras em pares consecutivos (concordância e correlação) | Só local (chama o Jev, log em `jev-calls.jsonl`) |
 
 ## Como a ordem é calculada
 
@@ -94,6 +96,26 @@ Cada transição recebe uma nota: 35% Camelot, 25% BPM, 25% energia, 10% estilo,
 - **Tensão e alívio:** três ou mais faixas seguidas com energia 9+ são penalizadas.
 
 Curvas: `classic` (warm up, construção, pico, clímax, encerramento), `peak_time`, `warm_up` e `sunrise`.
+
+## Tamanho do set
+
+`dj_build_set` aceita `duration_minutes` (10 a 600) ou `max_tracks` (2 a 150), nunca os dois. Com um deles, lê a playlist inteira (até 600 itens) e o feixe escolhe, entre todas as faixas analisadas, as N que melhor seguem a curva. Com `duration_minutes`, N = duração pedida ÷ duração média das faixas (duração real do Spotify, por isso exige `playlist`; `track_ids` só com `max_tracks`). O resultado traz `pool_size` e `duration_ms`, e um aviso "Selecionadas N de M faixas analisadas (~X min)". Sem nenhum dos dois, nada muda: até 150 itens, todos ordenados.
+
+Custo: cresce com N × largura do feixe × faixas do pool. Um set de 90 min sobre 436 faixas leva menos de 1 s; 150 faixas escolhidas entre 600 levam cerca de 13 s.
+
+## Energia estimada
+
+Faixa sem energia do Mixar ou do usuário e com `energy 0.62 (ReccoBeats)` nas notas ganha, na leitura, `energy = clamp(round(1 + x × 9), 1, 10)` e `energy_estimated: true` (o markdown marca com `*`). O valor derivado nunca é gravado em `analysis.json`; a energia do Mixar ou do usuário sempre vence. O aviso de "faixas sem energia" fica só para quem não tem nem a estimativa.
+
+## Jev (TypeSafe)
+
+Chave e limiar vêm do ambiente: `TYPESAFE_API_KEY` e `JEV_MIN_CONFIDENCE` (padrão 0,7). O cliente usa `fetch` puro (`POST https://api.typesafe.ai/v1/systemone`, modelo `jev-latest`) e recebe só números (BPM, Camelot, energia, ΔBPM): nunca nome, artista nem ID do Spotify.
+
+- Só `transition_plan` com `use_jev` e `jev_compare` chamam o Jev. `dj_build_set` e `dj_evaluate_order` não.
+- O Jev decide o tipo da transição só com confiança ≥ `JEV_MIN_CONFIDENCE`; comprimento e troca de grave saem das regras da ADR 0005 para o tipo escolhido.
+- Sem chave, com erro (HTTP, timeout) ou com confiança baixa, o planejador de regras decide e o plano avisa. `jev_compare` sem chave falha com aviso claro e, no 429/529 ou após 3 falhas seguidas, para e devolve o que já tem.
+- Cada chamada vira uma linha em `jev-calls.jsonl` na pasta de dados (hash do state, perguntas, respostas, confiança, latência, modelo e uso de tokens).
+- O `score` do Jev vem na escala dos índices dos critérios (0 a 4 para 5 níveis, confirmado em chamada real); a nota 1–5 é o score + 1. A confiança do score é separada da confiança do tipo.
 
 ## Segurança
 
@@ -109,4 +131,5 @@ Curvas: `classic` (warm up, construção, pico, clímax, encerramento), `peak_ti
 npm run build
 npm run test:engine   # motor de set com as 22 faixas da playlist Eletro
 npm run test:server   # ponta a ponta via stdio, sem tocar no Spotify
+npm run test:jev      # cliente do Jev com http falso: nenhuma chamada real, mesmo com chave no ambiente
 ```

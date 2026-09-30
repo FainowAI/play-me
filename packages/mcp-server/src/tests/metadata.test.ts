@@ -138,4 +138,67 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 
-console.log("[ok] metadados: merge, ReccoBeats simulada, lookup");
+// ---------- P12: energia estimada na leitura do store (nunca persistida) ----------
+{
+  const energyDir = mkdtempSync(join(tmpdir(), "dj-energy-test-"));
+  try {
+    const store = new AnalysisStore(energyDir);
+    const file = join(energyDir, "analysis.json");
+    const id = (n: number) => String(n).padStart(22, "0");
+    const webNote = (x: string) => `[A VALIDAR] tom da web (ReccoBeats); confira no Mixar; energy ${x} (ReccoBeats), apoio à energia`;
+    store.upsert([
+      { track_id: id(1), bpm: 124, camelot: "8A", source: "web", notes: webNote("0.55") },
+      { track_id: id(2), bpm: 124, camelot: "8A", source: "spotify-mixar", energy: 8, notes: webNote("0.10") },
+      { track_id: id(3), bpm: 124, camelot: "8A", source: "web", notes: webNote("0.00") },
+      { track_id: id(4), bpm: 124, camelot: "8A", source: "web", notes: webNote("1.00") },
+      { track_id: id(5), bpm: 124, camelot: "8A", source: "web", notes: "[A VALIDAR] tom da web (ReccoBeats); confira no Mixar" },
+      { track_id: id(6), bpm: 124, camelot: "8A", source: "web", notes: webNote("0.62") },
+    ]);
+
+    // web sem energia + notas com `energy x (ReccoBeats)` → clamp(round(1 + x × 9), 1, 10), marcada como estimativa
+    assert.deepEqual([store.get(id(1))?.energy, store.get(id(1))?.energy_estimated], [6, true], "0.55 → 6");
+    assert.equal(store.getMany([id(1)]).get(id(1))?.energy, 6, "getMany deriva igual ao get");
+    assert.equal(store.get(id(3))?.energy, 1, "0.00 → 1");
+    assert.equal(store.get(id(4))?.energy, 10, "1.00 → 10");
+    assert.equal(store.get(id(6))?.energy, 7, "0.62 → round(6.58) = 7");
+    // Mixar (ou qualquer energia do usuário) fica intacta e sem marca
+    assert.deepEqual([store.get(id(2))?.energy, store.get(id(2))?.energy_estimated], [8, undefined]);
+    // a nota "tom da web (ReccoBeats)" não é energia: sem número, sem estimativa
+    assert.deepEqual([store.get(id(5))?.energy, store.get(id(5))?.energy_estimated], [undefined, undefined]);
+    assert.equal(store.get(id(99)), undefined);
+
+    // o derivado nunca chega ao arquivo nem ao cache
+    const onDisk = (n: number) => (JSON.parse(readFileSync(file, "utf8")) as { tracks: TrackAnalysis[] }).tracks.find((x) => x.track_id === id(n));
+    const assertClean = (when: string) => {
+      const text = readFileSync(file, "utf8");
+      assert.ok(!text.includes("energy_estimated"), `${when}: energy_estimated no arquivo`);
+      for (const n of [1, 3, 4, 5, 6]) assert.equal(onDisk(n)?.energy, undefined, `${when}: energia derivada gravada em ${n}`);
+      assert.equal(onDisk(2)?.energy, 8, `${when}: energia do Mixar preservada`);
+    };
+    assertClean("após o upsert");
+
+    // upsert de uma entrada derivada (saída de get) não grava a energia nem a marca
+    store.upsert([store.get(id(1)) as TrackAnalysis]);
+    assertClean("após upsert de entrada derivada");
+    assert.equal(store.get(id(1))?.energy, 6, "a estimativa continua saindo das notas");
+
+    // upsert de outra faixa regrava o arquivo inteiro: as estimativas dos demais não podem vazar
+    store.upsert([{ track_id: id(7), bpm: 126, camelot: "9A", source: "web", notes: webNote("0.80") }]);
+    assertClean("após upsert de outra faixa");
+    assert.equal(store.get(id(7))?.energy, 8, "0.80 → round(8.2) = 8");
+
+    // o usuário informa a energia: passa a valer e deixa de ser estimativa
+    store.upsert([{ track_id: id(1), bpm: 124, camelot: "8A", energy: 4 }]);
+    assert.deepEqual([store.get(id(1))?.energy, store.get(id(1))?.energy_estimated], [4, undefined]);
+    assert.equal(onDisk(1)?.energy, 4);
+
+    // a leitura devolve cópia: alterar o resultado não contamina o cache
+    const copy = store.get(id(3)) as TrackAnalysis;
+    copy.energy = 9;
+    assert.equal(store.get(id(3))?.energy, 1);
+  } finally {
+    rmSync(energyDir, { recursive: true, force: true });
+  }
+}
+
+console.log("[ok] metadados: merge, ReccoBeats simulada, lookup, energia estimada (P12)");

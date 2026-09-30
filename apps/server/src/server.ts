@@ -1,4 +1,4 @@
-/** Servidor HTTP (node:http puro): SSE do chat, leitura de sessões/sets, status, playlists, configurações e decisão de approvals. */
+/** Servidor HTTP (node:http puro): SSE do chat, leitura de sessões/sets, status, playlists, configurações, decisão de approvals e notas das passagens. */
 import http from "node:http";
 import { AuthRequiredError } from "spotify-dj-mcp-server/dist/services/auth.js";
 import { mixGuideStep } from "spotify-dj-mcp-server/dist/services/planner.js";
@@ -139,6 +139,19 @@ export function createHttpServer(deps: HttpDeps): http.Server {
       const approval = repo.decideApproval(id, decision);
       waiter.resolve(id, decision);
       return json(200, approval);
+    }
+
+    m = /^\/api\/plans\/([^/]+)\/feedback$/.exec(path);
+    if (m && method === "POST") {
+      const id = decodeId(m[1] ?? "");
+      const { rating, notes } = await readJson(req);
+      // inteiro de 1 a 5 aqui: o CHECK do banco aceitaria 3.5 e, se barrasse, viraria 500
+      if (typeof rating !== "number" || !Number.isInteger(rating) || rating < 1 || rating > 5) throw new HttpError(400, "rating deve ser um inteiro de 1 a 5.");
+      const note = notes ?? null;
+      if (note !== null && (typeof note !== "string" || note.length > 500)) throw new HttpError(400, "notes deve ser um texto de até 500 caracteres.");
+      const feedback = repo.addFeedback(id, rating, note);
+      if (!feedback) throw new HttpError(404, "Passagem não encontrada.");
+      return json(200, feedback);
     }
 
     if (method === "POST" && path === "/api/chat") {

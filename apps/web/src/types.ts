@@ -46,6 +46,7 @@ export interface SnapshotTrack {
   section: string; // nome da seção da curva (inglês, do MCP)
   source: string | null; // "web" = ReccoBeats (BPM conferido, tom a validar); outro = Mixar/usuário; null = sem dado no store
   key_review: boolean; // tom [A VALIDAR]
+  energy_estimated?: boolean; // Sprint 4 (P12): energia derivada do energy da ReccoBeats (0–1 → 1–10)
 }
 
 export interface TransitionReport {
@@ -71,6 +72,8 @@ export interface TransitionReport {
 export interface SetSnapshot {
   curve: string;
   average_score: number;
+  pool_size?: number; // Sprint 4 (P10): faixas analisadas consideradas na seleção
+  duration_ms?: number | null; // Sprint 4 (P10): duração somada da ordem, quando o Spotify informou
   order: SnapshotTrack[];
   transitions: TransitionReport[]; // índice i = passagem i+1 → i+2
   weak_transitions: number[]; // índices em `transitions`
@@ -106,6 +109,14 @@ export interface PlanRow {
   plan: TransitionPlan;
   planner_version: string;
   score: number | null; // nota total da passagem (0..1), do montador
+  created_at: string;
+  feedback?: TransitionFeedback | null; // Sprint 4 (7.1.1): última nota dada pelo DJ
+}
+
+/** Nota 1–5 dada na Transição expandida (transition_feedback). */
+export interface TransitionFeedback {
+  rating: number; // 1..5
+  notes: string | null;
   created_at: string;
 }
 

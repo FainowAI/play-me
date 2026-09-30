@@ -33,10 +33,11 @@ export function arcCaption(order: SnapshotTrack[]): string {
 
 /**
  * Linha mono do cabeçalho do painel. Versão criada pelo gate de envio chega sem transições e com a nota média da ordem
- * anterior; nessas a nota média não aparece.
+ * anterior; nessas a nota média não aparece. A duração só aparece quando o Spotify informou a de todas as faixas (`duration_ms` numérico).
  */
 export function metaLine(snapshot: SetSnapshot): string {
   const parts = [`${snapshot.order.length} faixas`];
+  if (typeof snapshot.duration_ms === "number") parts.push(`${Math.round(snapshot.duration_ms / 60000)} min`);
   if (snapshot.transitions.length > 0) parts.push(`nota média ${score(snapshot.average_score)}`);
   parts.push(`curva ${snapshot.curve}`);
   return parts.join(" · ");
