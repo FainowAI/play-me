@@ -11,7 +11,7 @@ export declare function EnergyMeter(p: { value: number; estimated?: boolean; sho
 export declare function StatusTag(p: { tone?: Tone; children: React.ReactNode }): JSX.Element;
 export declare function TrackRow(p: { index: number; title: string; artist: string; bpm: number | null; camelot: Camelot | null; energy?: number; estimated?: boolean; state?: 'default'|'selected'|'playing'|'pending' }): JSX.Element;
 export declare function PhraseBar(p: { sections: Section[]; deck?: 'a'|'b'; label?: string; exitAt?: number; entryAt?: number }): JSX.Element;
-export declare function TransitionCard(p: { index?: string; from: TrackRef; to: TrackRef; relation: { tone: Tone; label: string }; deltaBpm: number; deltaEnergy: number; type: string; lengthBars: 4|8|16|32; exitAt?: number; entryAt?: number; aSections?: Section[]; bSections?: Section[]; reason?: string }): JSX.Element;
+export declare function TransitionCard(p: { index?: string; trackA: TrackRef; trackB: TrackRef; /** @deprecated use trackA (from é reservado no x-import do canvas) */ from?: TrackRef; /** @deprecated use trackB */ to?: TrackRef; relation: { tone: Tone; label: string }; deltaBpm: number; deltaEnergy: number; type: string; lengthBars: 4|8|16|32; exitAt?: number; entryAt?: number; aSections?: Section[]; bSections?: Section[]; reason?: string }): JSX.Element;
 export declare function SetArc(p: { points: { energy: number }[]; current?: number; caption?: string }): JSX.Element;
 export declare function CamelotWheel(p: { active?: Camelot; compatible?: Camelot[]; size?: number }): JSX.Element;
 export declare function ChatMessage(p: { role?: 'user'|'assistant'; children: React.ReactNode }): JSX.Element;

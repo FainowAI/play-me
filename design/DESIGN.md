@@ -1,6 +1,6 @@
 # Play.Me — DESIGN.md
 
-Referência visual para o Claude Code implementar a UI do Play.Me (React + Vite + TypeScript). Fonte da verdade dos valores: `playme-tokens.json` / `playme-tokens.css`. Design system navegável: artifact "Play.Me" (Design System), com os componentes em `design/ds/`. Telas: canvas "Play.Me · Telas do MVP", com cópia em `design/telas/` (D23; o Google Stitch saiu).
+Referência visual para o Claude Code implementar a UI do Play.Me (React + Vite + TypeScript). Fonte da verdade dos valores: `playme-tokens.json` / `playme-tokens.css`. Design system navegável: artifact "Play.Me" (Design System), com os componentes em `design/ds/`. Telas: canvas "Play.Me · Telas do MVP" (https://claude.ai/artifact/52ejbuCbMrXoM7fyfs8ayK), com cópia em `design/telas/` (D23; o Google Stitch saiu). Guia de construção tela por tela: `design/telas-referencia.md` (D31).
 
 ## 1. Conceito
 
@@ -27,6 +27,7 @@ Chat local do DJ, estilo ChatGPT, que lê playlists do Spotify, analisa os arqui
 | ink-muted | #BCBEC3 | #3B3D43 | Artista, metadado |
 | ink-subtle | #909299 | #616369 | Rótulo, placeholder |
 | ink-inverse | #06070A | #FFFFFF | Texto do botão primário |
+| scrim | rgba(6,7,10,.72) | rgba(16,17,22,.32) | Fundo escurecido sob gavetas e janelas |
 
 ### Acento e decks
 

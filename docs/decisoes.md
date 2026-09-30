@@ -36,6 +36,7 @@ Toda decisão nova entra aqui e no quadro do projeto: https://claude.ai/artifact
 | D28 | 29/09/2026 | Jev numa sprint própria (Sprint 4), sempre com fallback de regras (fecha P02). A chave TYPESAFE_API_KEY já está no `.env`; acesso e SDK oficial são validados na sprint. | Acesso de terceiro não trava o MVP. |
 | D29 | 29/09/2026 | GetSongBPM sai do projeto (fecha P09): a ReccoBeats é a única fonte web de BPM e tom. A remoção do código é o item 1 do prompt 04. | Na gravação da Eletro, o GetSongBPM não achou nenhuma das 121 faixas pendentes; sem ele, o backlink deixa de ser exigido. |
 | D30 | 29/09/2026 | Planejador de transições por metadados e guia do Mix em TypeScript, dentro do MCP (`transition_plan`, `export_mix_guide`), reusando `camelot.ts` e `dj-engine.ts`. O analisador Python fica só para a trilha de áudio. | Sem áudio não há trabalho para o Python; o motor de harmonia e BPM já existe no MCP. |
+| D31 | 29/09/2026 | As telas do canvas "Play.Me · Telas do MVP" são a especificação de construção da `apps/web`: layout do canvas, componentes reais do design system portados para TSX. Onde o texto do canvas diverge das decisões (fontes de dados, Jev, contagens), valem as decisões. Guia: `design/telas-referencia.md`. | Pedido do usuário: construir seguindo o canvas; o canvas é anterior às D24 a D30. |
 
 EAP e roadmap: `docs/eap_play-me_fainow.md` (29/09/2026).
 

@@ -72,9 +72,9 @@ Legenda: ✅ feito · ⬜ a fazer.
       4.1.1 ⬜ apps/server: Agent SDK + MCP spotify-dj
       4.1.2 ⬜ Streaming SSE para a UI
       4.1.3 ⬜ Sessões persistidas e retomáveis
-  5. Chat de DJ — interface (Fase C)
+  5. Chat de DJ — interface (Fase C) · especificação: canvas + design/telas-referencia.md (D31)
     5.1 Shell
-      5.1.1 ⬜ Vite + React + Tailwind com tokens do DESIGN.md
+      5.1.1 ⬜ Vite + React + Tailwind com tokens do DESIGN.md; componentes reais do design system portados para TSX
       5.1.2 ⬜ Sidebar, coluna do chat, composer, AgentOrb (D20)
     5.2 Telas do fluxo (D21)
       5.2.1 ⬜ Início e Conversa (ThinkingStatus, ToolCall)

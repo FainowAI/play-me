@@ -276,7 +276,9 @@ Com 137 faixas são ~18 mil pares ordenados: Jev pontua em lote; Claude trabalha
 
 **Design no canvas (D23, ADR 0003):**
 - O design system existe em `design/DESIGN.md` e `design/playme-tokens.css`. As telas vêm do canvas "Play.Me · Telas do MVP", com cópia em `design/telas/`; os componentes, em `design/ds/`. Lista e fluxo das telas: `design/telas-mvp.md` (D21).
-- O React implementa lendo `design/telas/*.dc.html` como referência de layout e `design/ds/` como referência de componentes. O `DESIGN.md` segue como fonte dos tokens; a UI não inventa cor, fonte ou espaçamento fora dele.
+- Canvas: https://claude.ai/artifact/52ejbuCbMrXoM7fyfs8ayK. Design system: https://claude.ai/artifact/MNHQn2dmZhJa4XCUwPWbxn.
+- **As telas do canvas são a especificação da `apps/web` (D31).** O React implementa lendo `design/telas/*.dc.html` como referência de layout. Os componentes são os reais do design system (`design/ds/components`, React, tipos em `index.d.ts`), portados para TSX, não redesenhados. O `DESIGN.md` segue como fonte dos tokens; a UI não inventa cor, fonte ou espaçamento fora dele.
+- `design/telas-referencia.md` é o guia de construção: componentes, dados, ferramentas e pacote da EAP por tela, mais as divergências entre o canvas e as decisões (nelas, valem as decisões).
 
 ---
 

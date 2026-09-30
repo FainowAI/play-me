@@ -2,6 +2,8 @@
 
 Canvas com as telas: artifact "Play.Me · Telas do MVP" (https://claude.ai/artifact/52ejbuCbMrXoM7fyfs8ayK). É a fonte das telas (D23): substitui o Google Stitch. Cópia dos arquivos em `design/telas/` (`.dc.html` + `canvas.json`) e dos componentes em `design/ds/`, para o Claude Code ler. Construídas com o design system Play.Me (componentes reais do bundle `PlayMe`). Cada tela tem o tweak Tema (Cabine · Dia). Ajustadas à rota por metadados (D22) em 29/09/2026.
 
+Construção: `design/telas-referencia.md` traz, por tela, componentes, dados, ferramentas, pacote da EAP e as divergências entre o canvas e as decisões vigentes (D31).
+
 ## Princípio
 
 Uma tela principal só: o chat. O set vive num painel lateral com versões. Todo o resto é estado do chat, gaveta ou janela por cima. Botões viram mensagem no composer, então o chat é sempre o registro do que aconteceu.

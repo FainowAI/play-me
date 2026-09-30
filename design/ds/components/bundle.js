@@ -81,7 +81,7 @@
 
   function num(n, unit) { var s = n > 0 ? '+' : n < 0 ? '−' : '±'; return s + Math.abs(n) + (unit || ''); }
   function TransitionCard(p) {
-    var a = p.from || {}, b = p.to || {}, rel = p.relation || {};
+    var a = p.trackA || p.from || {}, b = p.trackB || p.to || {}, rel = p.relation || {};
     return h('article', { className: 'pm-trans' },
       h('header', { className: 'pm-trans__head' },
         h('span', { className: 'label pm-trans__eyebrow' }, 'Transição ' + (p.index || '')),

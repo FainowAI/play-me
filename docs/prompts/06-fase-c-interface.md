@@ -5,7 +5,7 @@ Sprint 3 da EAP (`docs/eap_play-me_fainow.md`), work packages 5.1, 5.2, 6.1.2, 6
 ```
 Use o /feature-builder.
 
-Leia antes: design/DESIGN.md (inteiro; a seção 9 traz os critérios de aceite da UI), design/playme-tokens.css, design/telas-mvp.md, design/telas/*.dc.html (referência de layout), design/ds/ (referência de componentes), CLAUDE.md (Interface) e os endpoints de apps/server.
+Leia antes: design/telas-referencia.md (guia de construção, tela por tela, com as divergências canvas × decisões), design/DESIGN.md (inteiro; a seção 9 traz os critérios de aceite da UI), design/playme-tokens.css, design/telas-mvp.md, design/telas/*.dc.html (layout), design/ds/components (bundle.js, bundle.css, index.d.ts: os componentes reais), CLAUDE.md (Interface) e os endpoints de apps/server.
 
 Contexto:
 - As telas são as do canvas "Play.Me · Telas do MVP" (D21, D23). A cópia em design/telas/ é a referência de layout; o DESIGN.md é a fonte dos tokens. A UI não inventa cor, fonte nem espaçamento.
@@ -13,6 +13,7 @@ Contexto:
 
 Tarefas:
 1. apps/web: Vite + React + TS strict + Tailwind, com os tokens de playme-tokens.css. Tema Cabine (dark) padrão e Dia (light) opcional.
+   Componentes: porte os 15 do design system (design/ds/components/bundle.js) para TSX em apps/web/src/components/playme/, com as props de index.d.ts e as classes de bundle.css. Não redesenhe nem crie look-alikes. Construa cada tela pelo canvas (design/telas/*.dc.html). Onde o texto diverge das decisões, siga a tabela "Divergências" de telas-referencia.md.
 2. Shell: Sidebar (264 px), coluna do chat (720 px), SetPanel (400 px, só quando existe set). Abaixo de 1100 px o painel vira gaveta; abaixo de 720 px, a sidebar também.
 3. Telas da D21, na ordem do fluxo:
    - Início.
