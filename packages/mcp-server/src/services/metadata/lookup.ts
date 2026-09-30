@@ -1,17 +1,17 @@
 /**
- * Orquestra a Fase M: ReccoBeats em lote (principal) e GetSongBPM só para as faixas que ela
- * não cobre (reserva), com cache; decide pelo merge e, só quando dry_run = false, grava no store.
+ * Orquestra a Fase M: ReccoBeats em lote (única fonte web), com cache; decide pelo merge
+ * e, só quando dry_run = false, grava no store.
  */
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SpotifyTrackSummary, TrackAnalysis } from "../../types.js";
 import type { AnalysisStore } from "../analysis-store.js";
-import { RateLimitError, type GetSongBpmResult } from "./getsongbpm.js";
+import { RateLimitError } from "./http.js";
 import { mergeMetadata, type MergeOutcome } from "./merge.js";
 import type { ReccoBeatsResult } from "./reccobeats.js";
 
-type Provider = "getsongbpm" | "reccobeats";
-type CacheValue = GetSongBpmResult | ReccoBeatsResult | null; // null = a fonte não achou a faixa
+type Provider = "reccobeats";
+type CacheValue = ReccoBeatsResult | null; // null = a fonte não achou a faixa
 
 /**
  * Cache em metadata-cache.json, chave "<spotify_id>:<provedor>". Guarda só números,
@@ -50,7 +50,6 @@ export class MetadataCache {
 export interface LookupDeps {
   store: AnalysisStore;
   cache: MetadataCache;
-  getsongbpm: ((title: string, artists: string[]) => Promise<GetSongBpmResult | null>) | null; // null = sem chave
   reccobeats: (trackIds: string[]) => Promise<Map<string, ReccoBeatsResult>>;
 }
 
@@ -59,7 +58,6 @@ export interface LookupRow {
   label: string;
   existing: Pick<TrackAnalysis, "bpm" | "camelot" | "source" | "notes"> | null;
   reccobeats: ReccoBeatsResult | null;
-  getsongbpm: GetSongBpmResult | null; // só consultado quando a ReccoBeats não tem BPM e tom
   outcome: MergeOutcome;
 }
 
@@ -70,21 +68,8 @@ export interface LookupReport {
   stopped: string | null; // motivo quando o lote foi interrompido (limite de requisições)
 }
 
-async function cached<T extends CacheValue>(
-  cache: MetadataCache,
-  trackId: string,
-  provider: Provider,
-  fetcher: () => Promise<T>,
-): Promise<T> {
-  if (cache.has(trackId, provider)) return cache.get<T>(trackId, provider);
-  const value = await fetcher();
-  cache.set(trackId, provider, value);
-  return value;
-}
-
 export async function lookupTracks(tracks: SpotifyTrackSummary[], dryRun: boolean, deps: LookupDeps): Promise<LookupReport> {
   const rows: LookupRow[] = [];
-  let stopped: string | null = null;
 
   const missing = tracks.flatMap((t) => (t.id && !deps.cache.has(t.id, "reccobeats") ? [t.id] : []));
   try {
@@ -98,35 +83,21 @@ export async function lookupTracks(tracks: SpotifyTrackSummary[], dryRun: boolea
   for (const track of tracks) {
     if (!track.id) continue;
     const id = track.id;
-    try {
-      const recco = deps.cache.get<ReccoBeatsResult | null>(id, "reccobeats") ?? null;
-      const needGsb = !recco?.bpm || !recco.camelot;
-      const gsb =
-        needGsb && deps.getsongbpm
-          ? await cached(deps.cache, id, "getsongbpm", () => deps.getsongbpm!(track.name, track.artists))
-          : null;
-      const existing = deps.store.get(id);
-      rows.push({
-        track_id: id,
-        label: `${track.name} — ${track.artists.join(", ")}`,
-        existing: existing
-          ? { bpm: existing.bpm, camelot: existing.camelot, source: existing.source, notes: existing.notes }
-          : null,
-        reccobeats: recco,
-        getsongbpm: gsb,
-        outcome: mergeMetadata(id, existing, recco, gsb),
-      });
-    } catch (error) {
-      if (error instanceof RateLimitError) {
-        stopped = error.message;
-        break;
-      }
-      throw error;
-    }
+    const recco = deps.cache.get<ReccoBeatsResult | null>(id, "reccobeats") ?? null;
+    const existing = deps.store.get(id);
+    rows.push({
+      track_id: id,
+      label: `${track.name} — ${track.artists.join(", ")}`,
+      existing: existing
+        ? { bpm: existing.bpm, camelot: existing.camelot, source: existing.source, notes: existing.notes }
+        : null,
+      reccobeats: recco,
+      outcome: mergeMetadata(id, existing, recco),
+    });
   }
 
   const toSave = rows.flatMap((row) => (row.outcome.action === "save" ? [row.outcome.entry] : []));
   // upsert([]) regrava o arquivo: só chama quando há o que salvar
   if (!dryRun && toSave.length) deps.store.upsert(toSave);
-  return { dry_run: dryRun, rows, saved: dryRun ? 0 : toSave.length, stopped };
+  return { dry_run: dryRun, rows, saved: dryRun ? 0 : toSave.length, stopped: null };
 }

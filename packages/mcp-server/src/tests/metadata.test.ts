@@ -3,14 +3,13 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AnalysisStore } from "../services/analysis-store.js";
-import { RateLimitError, cleanTitle, createGetSongBpm, normalize, type HttpDeps } from "../services/metadata/getsongbpm.js";
+import { RateLimitError, type HttpDeps } from "../services/metadata/http.js";
 import { MetadataCache, lookupTracks } from "../services/metadata/lookup.js";
 import { coverageBucket, mergeMetadata } from "../services/metadata/merge.js";
 import { createReccoBeats, pitchToCamelot } from "../services/metadata/reccobeats.js";
 import type { SpotifyTrackSummary, TrackAnalysis } from "../types.js";
 
 const ID = "0000000000000000000001";
-const g = (bpm: number | null, key: string | null = "Am", danceability: number | null = null) => ({ bpm, key, danceability });
 const r = (bpm: number | null, camelot: string | null = "8A", energy: number | null = null) => ({ bpm, camelot, energy });
 const saved = (outcome: ReturnType<typeof mergeMetadata>) => {
   assert.equal(outcome.action, "save");
@@ -20,52 +19,38 @@ const saved = (outcome: ReturnType<typeof mergeMetadata>) => {
 // ---------- merge: origem do usuário nunca é sobrescrita ----------
 for (const source of ["spotify-mixar", "rekordbox", "serato", "traktor", "ouvido", "manual", undefined]) {
   const existing: TrackAnalysis = { track_id: ID, bpm: 124, camelot: "8A", source, updated_at: "" };
-  assert.equal(mergeMetadata(ID, existing, r(126), g(126)).action, "keep", `sobrescreveu ${source}`);
+  assert.equal(mergeMetadata(ID, existing, r(126)).action, "keep", `sobrescreveu ${source}`);
 }
 // entrada web anterior pode ser atualizada
 const webEntry: TrackAnalysis = { track_id: ID, bpm: 120, camelot: "8A", source: "web", updated_at: "" };
-assert.equal(mergeMetadata(ID, webEntry, r(124), null).action, "save");
+assert.equal(mergeMetadata(ID, webEntry, r(124)).action, "save");
 
 // ---------- merge: BPM ----------
-let e = saved(mergeMetadata(ID, undefined, r(124.02), null));
+let e = saved(mergeMetadata(ID, undefined, r(124.02)));
 assert.equal(e.bpm, 124, "ReccoBeats sozinha: conferido, arredondado");
 assert.equal(e.source, "web");
 assert.ok(!e.notes?.includes("[A VALIDAR] BPM"));
-e = saved(mergeMetadata(ID, undefined, r(128), g(64)));
-assert.ok(!e.notes?.includes("[A VALIDAR] BPM"), "metade/dobro concorda");
-e = saved(mergeMetadata(ID, undefined, r(124), g(130)));
-assert.equal(e.bpm, 124, "diverge: fica o valor da ReccoBeats");
-assert.match(e.notes ?? "", /\[A VALIDAR\] BPM diverge: ReccoBeats 124, GetSongBPM 130/);
-e = saved(mergeMetadata(ID, undefined, null, g(124)));
-assert.match(e.notes ?? "", /\[A VALIDAR\] BPM de fonte única \(GetSongBPM\)/);
 
 // ---------- merge: tom sempre [A VALIDAR] ----------
-e = saved(mergeMetadata(ID, undefined, r(124, "12A"), null));
+e = saved(mergeMetadata(ID, undefined, r(124, "12A")));
 assert.equal(e.camelot, "12A");
 assert.match(e.notes ?? "", /\[A VALIDAR\] tom da web \(ReccoBeats\)/);
-e = saved(mergeMetadata(ID, undefined, r(124, null), g(124, "C♯m")));
-assert.equal(e.camelot, "12A", "sem tom na ReccoBeats: usa o do GetSongBPM");
-assert.match(e.notes ?? "", /\[A VALIDAR\] tom da web \(GetSongBPM\)/);
-assert.equal(saved(mergeMetadata(ID, undefined, null, g(124, "B♭"))).camelot, "6B");
-assert.deepEqual(mergeMetadata(ID, undefined, r(124, null), g(124, null)), { action: "pending", reason: "sem tom" });
-assert.deepEqual(mergeMetadata(ID, undefined, r(124, null), null), { action: "pending", reason: "sem tom" });
+assert.deepEqual(mergeMetadata(ID, undefined, r(124, null)), { action: "pending", reason: "sem tom" });
 
 // ---------- merge: sem BPM ----------
-assert.deepEqual(mergeMetadata(ID, undefined, r(null), g(null)), { action: "pending", reason: "sem BPM em nenhuma fonte" });
-assert.equal(mergeMetadata(ID, undefined, null, null).action, "pending");
+assert.deepEqual(mergeMetadata(ID, undefined, r(null)), { action: "pending", reason: "sem BPM em nenhuma fonte" });
+assert.equal(mergeMetadata(ID, undefined, null).action, "pending");
 
-// ---------- merge: energy/danceability só em notes ----------
-e = saved(mergeMetadata(ID, undefined, r(124, "8A", 0.731), null));
+// ---------- merge: energy só em notes ----------
+e = saved(mergeMetadata(ID, undefined, r(124, "8A", 0.731)));
 assert.match(e.notes ?? "", /energy 0\.73 \(ReccoBeats\)/);
 assert.equal(e.energy, undefined, "energia continua estimativa do Claude");
-e = saved(mergeMetadata(ID, undefined, null, g(124, "Am", 71)));
-assert.match(e.notes ?? "", /danceability 71\/100/);
 
 // ---------- cobertura: bucket pelo BPM (tom da web é sempre a validar) ----------
 assert.equal(coverageBucket(undefined), "pendente");
 assert.equal(coverageBucket({ ...webEntry, source: "spotify-mixar" }), "mixar");
 assert.equal(coverageBucket({ ...webEntry, notes: "[A VALIDAR] tom da web (ReccoBeats); confira no Mixar" }), "web");
-assert.equal(coverageBucket({ ...webEntry, notes: "[A VALIDAR] BPM de fonte única (GetSongBPM)" }), "a_validar");
+assert.equal(coverageBucket({ ...webEntry, notes: "[A VALIDAR] BPM diverge: ReccoBeats 124, outra fonte 130" }), "a_validar", "entradas antigas");
 
 // ---------- clientes com fetch simulado ----------
 const calls: string[] = [];
@@ -84,43 +69,6 @@ const fakeHttp = (respond: (url: string) => { status?: number; body: unknown }):
   },
   now: () => clock,
 });
-
-assert.equal(normalize("RÜFÜS DU SOL"), "rufusdusol");
-assert.equal(normalize("Level 5 (feat. 06f)"), "level5feat06f", "dígitos e letras ficam");
-assert.equal(cleanTitle("Paranoia - Extended Mix"), "Paranoia");
-assert.equal(cleanTitle("Freak (Original Mix)"), "Freak");
-assert.equal(cleanTitle("Like I Like It (feat Kele Le Roc)"), "Like I Like It");
-assert.equal(cleanTitle("Freak - Fisher Remix"), "Freak - Fisher Remix", "remix é outra faixa");
-
-// GetSongBPM: casa título + artista, tempo em string, respeita 1,5 s
-const gsbBody = {
-  search: [
-    { title: "Paranoia (Remix)", tempo: "140", key_of: "Dm", artist: { name: "Outro" } },
-    { title: "Paranoia", tempo: "128", key_of: "F♯m", danceability: 80, artist: { name: "Mau P" } },
-  ],
-};
-const gsb = createGetSongBpm("KEY", fakeHttp(() => ({ body: gsbBody })));
-assert.deepEqual(await gsb("Paranoia - Extended Mix", ["Mau P"]), { bpm: 128, key: "F♯m", danceability: 80 });
-assert.deepEqual(await gsb("Paranoia", ["Artista Errado"]), null, "sem casamento de artista → sem dado");
-assert.deepEqual(sleeps, [1_500, 1_500], "cada requisição depois da primeira espera 1,5 s");
-// fallback: "both" sem resultado → busca só pelo título, artista conferido no pickMatch
-const fallback = createGetSongBpm(
-  "KEY",
-  fakeHttp((url) =>
-    new URL(url).searchParams.get("type") === "both"
-      ? { body: { search: { error: "no result" } } }
-      : { body: { search: [{ title: "You Were Right", tempo: "122", key_of: "E", artist: { name: "RÜFÜS" } }] } },
-  ),
-);
-const shortArtist = createGetSongBpm("KEY", fakeHttp(() => ({ body: { search: [{ title: "Paranoia", tempo: "90", key_of: "C", artist: { name: "P" } }] } })));
-assert.equal(await shortArtist("Paranoia", ["Mau P"]), null, "artista curto não casa por substring");
-assert.deepEqual(await fallback("You Were Right", ["RÜFÜS DU SOL"]), { bpm: 122, key: "E", danceability: null });
-const gsbUrl = new URL(calls[0]!);
-assert.equal(gsbUrl.origin + gsbUrl.pathname, "https://api.getsong.co/search/");
-assert.equal(gsbUrl.searchParams.get("lookup"), "song:Paranoia artist:Mau P");
-assert.equal(gsbUrl.searchParams.get("api_key"), null, "chave vai no header, não na URL");
-assert.deepEqual(await createGetSongBpm("KEY", fakeHttp(() => ({ body: { search: { error: "no result" } } })))("X", ["Y"]), null);
-await assert.rejects(createGetSongBpm("KEY", fakeHttp(() => ({ status: 429, body: {} })))("X", ["Y"]), RateLimitError);
 
 // ReccoBeats: classe de altura → Camelot, lote de 40, só /v1/audio-features
 assert.equal(pitchToCamelot(0, 1), "8B"); // C
@@ -165,7 +113,6 @@ try {
   const deps = {
     store,
     cache,
-    getsongbpm: async () => g(128, "F#m"),
     reccobeats: async (idsIn: string[]) => new Map(idsIn.map((id) => [id, r(128, "11A")] as const)),
   };
   const dry = await lookupTracks(tracks, true, deps);
@@ -179,19 +126,6 @@ try {
   assert.equal(store.get(ID)?.source, "spotify-mixar", "Mixar intacto");
   assert.equal(store.get("0000000000000000000002")?.camelot, "11A");
 
-  // GetSongBPM só como reserva: não é chamado quando a ReccoBeats tem BPM e tom
-  let gsbCalls = 0;
-  const onlyGsb = await lookupTracks([track("0000000000000000000005", "Z"), track("0000000000000000000006", "W")], true, {
-    ...deps,
-    reccobeats: async () => new Map([["0000000000000000000005", r(125, "4A")]]),
-    getsongbpm: async () => {
-      gsbCalls += 1;
-      return g(126, "Fm");
-    },
-  });
-  assert.equal(gsbCalls, 1, "só a faixa sem ReccoBeats vai ao GetSongBPM");
-  assert.deepEqual(onlyGsb.rows.map((row) => row.getsongbpm !== null), [false, true]);
-
   const limited = await lookupTracks([track("0000000000000000000003", "X"), track("0000000000000000000004", "Y")], true, {
     ...deps,
     reccobeats: async () => {
@@ -204,4 +138,4 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 
-console.log("[ok] metadados: merge, ReccoBeats e GetSongBPM simulados, lookup");
+console.log("[ok] metadados: merge, ReccoBeats simulada, lookup");

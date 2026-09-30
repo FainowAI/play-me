@@ -94,5 +94,16 @@ const pinned = buildSet(eletro, {
 assert.equal(pinned.order[0]?.label, "Don't This – Fairtone");
 assert.equal(pinned.order[pinned.order.length - 1]?.label, "You Were Right – RÜFÜS DU SOL");
 
+// Aviso de tom a confirmar (tom vindo da web)
+assert.ok(!result.warnings.some((w) => w.includes("tom a confirmar")), "sem notas de tom da web: nenhum aviso");
+const webTone = eletro.map((track, i) =>
+  i === 0 || i === 1 ? { ...track, notes: "[A VALIDAR] tom da web (ReccoBeats); confira no Mixar" } : track,
+);
+const webResult = buildSet(webTone, { curve: "classic" });
+const toneWarnings = webResult.warnings.filter((w) => w.includes("tom a confirmar"));
+assert.equal(toneWarnings.length, 1, "um único aviso de tom a confirmar");
+assert.ok(toneWarnings[0]?.startsWith("2 faixa(s) com tom a confirmar no Mixar:"));
+assert.ok(toneWarnings[0]?.includes("Adored – J. Worra") && toneWarnings[0]?.includes("The Sun Can't Compare – Space Motion"));
+
 console.log(setToMarkdown(result));
 console.log(`\n[ok] ${eletro.length} faixas em ${elapsed} ms · nota média ${result.average_score} · fixado: ${pinned.average_score}`);

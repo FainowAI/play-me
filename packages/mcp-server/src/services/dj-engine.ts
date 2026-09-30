@@ -379,6 +379,12 @@ export function buildReport(ordered: TrackAnalysis[], curve: CurvePreset, weight
     if (run === 3) warnings.push(`Três faixas seguidas com energia 9+ a partir da posição ${index - 1}: avalie um respiro.`);
   });
 
+  // Tom vindo da web (ainda a confirmar no Mixar)
+  const toConfirm = ordered.filter((track) => track.notes?.includes("[A VALIDAR] tom"));
+  if (toConfirm.length > 0) {
+    warnings.push(`${toConfirm.length} faixa(s) com tom a confirmar no Mixar: ${toConfirm.map(labelOf).join("; ")}`);
+  }
+
   // Pontes para as lacunas
   const bridges: BridgeSuggestion[] = weak.map((index) => {
     const from = ordered[index] as TrackAnalysis;

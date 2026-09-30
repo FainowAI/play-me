@@ -4,7 +4,7 @@
  * Só consulta por ID: o endpoint de análise de arquivo recebe áudio e fica fora (D04).
  */
 import { formatCamelot, parseKey } from "../camelot.js";
-import { RateLimitError, realHttp, type HttpDeps } from "./getsongbpm.js";
+import { RateLimitError, realHttp, type HttpDeps } from "./http.js";
 
 export const RECCOBEATS_BASE = "https://api.reccobeats.com";
 export const RECCOBEATS_BATCH = 40;

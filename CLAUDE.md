@@ -11,7 +11,7 @@ Uso pessoal, single-user, roda na máquina do usuário (Windows + WSL2). Pasta l
 ```
 1. Usuário pede no chat: "monta um set da Eletro, warm up até peak time"
 2. Spotify API  → lê a playlist (IDs, ISRC, nomes)
-3. Metadados    → BPM e tom: Mixar salvo > ReccoBeats (por ID) > GetSongBPM (reserva); tom da web e divergência viram [A VALIDAR]
+3. Metadados    → BPM e tom: Mixar salvo > ReccoBeats (por ID do Spotify); tom da web vira [A VALIDAR]
 4. Casamento    → (opcional, só com arquivo) cada faixa ↔ arquivo local (ISRC, fingerprint, fuzzy)
 5. Beat This!   → (opcional, só com arquivo) grade: beats, downbeats, compassos
 6. Extratores   → (opcional, só com arquivo) tom, energia por banda, vocal, seções, frases, cues
@@ -109,7 +109,7 @@ Play.me/
 | Matching | mutagen (tags/ISRC), Chromaprint `fpcalc` + AcoustID, fuzzy título/artista/duração |
 | Render | pedalboard (GPLv3) + Rubber Band para time-stretch |
 | Export | pyrekordbox ou ElementTree para Rekordbox XML |
-| Metadados (MVP) | ReccoBeats (BPM e tom pelo ID do Spotify, em lote) + GetSongBPM (reserva), com o Mixar como verdade (ADR 0004); cache em `~/.spotify-dj-mcp/metadata-cache.json` |
+| Metadados (MVP) | ReccoBeats (BPM e tom pelo ID do Spotify, em lote), com o Mixar como verdade (ADR 0004, D29); cache em `~/.spotify-dj-mcp/metadata-cache.json` |
 | Design da UI | Canvas do Claude → `design/telas/` + DESIGN.md → Claude Code |
 | UI | React, Vite, TypeScript, Tailwind; chat com streaming (SSE); canvas próprio para forma de onda em 3 bandas |
 
@@ -299,7 +299,7 @@ Manter as 11 atuais. Adicionar (as de metadados chamam as APIs direto; as demais
 
 | Ferramenta | Função |
 |---|---|
-| `metadata_lookup` | (Fase M) Busca BPM e tom na ReccoBeats e, para o que faltar, no GetSongBPM; mostra o que cada fonte trouxe e o que seria salvo; só grava com `dry_run=false` |
+| `metadata_lookup` | (Fase M) Busca BPM e tom na ReccoBeats; mostra o que ela trouxe e o que seria salvo; só grava com `dry_run=false` |
 | `metadata_coverage` | (Fase M) Cobertura de uma playlist por origem: Mixar, web, [A VALIDAR], pendente |
 | `library_match_status` | Quantas faixas de uma playlist têm arquivo local casado e análise pronta |
 | `library_match_confirm` | Confirma ou corrige um casamento Spotify ↔ arquivo |

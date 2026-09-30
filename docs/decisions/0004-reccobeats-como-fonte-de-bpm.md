@@ -1,6 +1,6 @@
 # 0004 — ReccoBeats como fonte principal de BPM
 
-Data: 29/09/2026 · Decisão D24 · Revê as fontes do ADR 0002 (a rota por metadados continua)
+Data: 29/09/2026 · Decisão D24 · Revê as fontes do ADR 0002 (a rota por metadados continua) · Atualização: o GetSongBPM saiu do código na Sprint 0 (D29); as menções a ele abaixo são o histórico da decisão.
 
 ## Contexto
 

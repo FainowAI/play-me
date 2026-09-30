@@ -1,6 +1,6 @@
 # Play.Me
 
-Sistema local que transforma playlists do Spotify em sets de DJ. Você conversa num chat de DJ; o Claude (Agent SDK, local) usa BPM e tom por metadados (Mixar, ReccoBeats, GetSongBPM) para propor a ordem e as transições; a análise de áudio é trilha opcional para faixas com arquivo. No MVP, o set aprovado vira uma playlist nova e privada no Spotify.
+Sistema local que transforma playlists do Spotify em sets de DJ. Você conversa num chat de DJ; o Claude (Agent SDK, local) usa BPM e tom por metadados (Mixar e ReccoBeats) para propor a ordem e as transições; a análise de áudio é trilha opcional para faixas com arquivo. No MVP, o set aprovado vira uma playlist nova e privada no Spotify.
 
 - Arquitetura, regras e fases: `CLAUDE.md`
 - Decisões e pendências: `docs/decisoes.md`
@@ -29,5 +29,5 @@ data/             banco e caches locais (fora do git)
 
 ## Fontes de dados
 
-- BPM e tom: [ReccoBeats](https://reccobeats.com) (principal, pelo ID do Spotify) e [GetSongBPM](https://getsongbpm.com) (reserva; API com backlink exigido), com o Mixar do Spotify como verdade. O tom vindo da web fica marcado [A VALIDAR].
+- BPM e tom: [ReccoBeats](https://reccobeats.com), pelo ID do Spotify, com o Mixar do Spotify como verdade. O tom vindo da web fica marcado [A VALIDAR].
 - Catálogo e playlists: Spotify Web API. Nenhum áudio vem de fora (D04).

@@ -2,7 +2,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getContext } from "../services/context.js";
 import { fail, render } from "../services/format.js";
-import { createGetSongBpm } from "../services/metadata/getsongbpm.js";
 import { MetadataCache, lookupTracks, type LookupRow } from "../services/metadata/lookup.js";
 import { coverageBucket, type CoverageBucket } from "../services/metadata/merge.js";
 import { createReccoBeats } from "../services/metadata/reccobeats.js";
@@ -16,16 +15,12 @@ const responseFormat = z
   .default(ResponseFormat.MARKDOWN)
   .describe("'markdown' para leitura humana ou 'json' para processamento");
 
-// Estado do processo: o intervalo de 1,5 s do GetSongBPM vale entre chamadas de ferramenta.
-let gsb: ReturnType<typeof createGetSongBpm> | null = null;
 let cache: MetadataCache | null = null;
 
 function deps() {
   const { config, store } = getContext();
   cache ??= new MetadataCache(config.dataDir);
-  const key = (process.env.GETSONGBPM_API_KEY ?? "").trim();
-  if (key && !gsb) gsb = createGetSongBpm(key);
-  return { store, cache, getsongbpm: key ? gsb : null, reccobeats: createReccoBeats() };
+  return { store, cache, reccobeats: createReccoBeats() };
 }
 
 async function readTracks(playlist: string | undefined, trackIds: string[] | undefined, limit: number): Promise<SpotifyTrackSummary[]> {
@@ -44,7 +39,6 @@ const fmtBpm = (bpm: number | null | undefined): string => (bpm == null ? "—" 
 
 function rowLine(row: LookupRow, dryRun: boolean): string {
   const r = row.reccobeats ? `ReccoBeats ${fmtBpm(row.reccobeats.bpm)} BPM, ${row.reccobeats.camelot ?? "sem tom"}` : "ReccoBeats: não achou";
-  const g = row.getsongbpm ? ` · GetSongBPM ${fmtBpm(row.getsongbpm.bpm)} BPM, ${row.getsongbpm.key ?? "sem tom"}` : "";
   const e = row.existing ? ` · salvo: ${row.existing.bpm} BPM ${row.existing.camelot} (${row.existing.source ?? "usuário"})` : "";
   const o = row.outcome;
   const result =
@@ -53,21 +47,21 @@ function rowLine(row: LookupRow, dryRun: boolean): string {
       : o.action === "keep"
         ? `→ mantém (${o.reason})`
         : `→ pendente (${o.reason})`;
-  return `- ${row.label}: ${r}${g}${e} ${result}`;
+  return `- ${row.label}: ${r}${e} ${result}`;
 }
 
 export function registerMetadataTools(server: McpServer): void {
   server.registerTool(
     "metadata_lookup",
     {
-      title: "Buscar BPM e tom na web (ReccoBeats + GetSongBPM)",
-      description: `Busca BPM e tom de faixas na ReccoBeats (pelo ID do Spotify, em lote) e, só para as que ela não cobre, no GetSongBPM (título + artista). Mostra, por faixa, o que cada fonte trouxe e o que seria salvo.
+      title: "Buscar BPM e tom na web (ReccoBeats)",
+      description: `Busca BPM e tom de faixas na ReccoBeats (pelo ID do Spotify, em lote). Mostra, por faixa, o que ela trouxe e o que seria salvo.
 
-Regras: entrada do Mixar/manual nunca é sobrescrita; BPM da ReccoBeats é salvo como conferido; BPM só do GetSongBPM ou divergente vira "[A VALIDAR]"; tom da web é sempre "[A VALIDAR]" (confira no Mixar); sem BPM ou sem tom a faixa fica pendente (nada é inventado). Nenhum áudio é baixado.
+Regras: entrada do Mixar/manual nunca é sobrescrita; BPM da ReccoBeats é salvo como conferido; tom da web é sempre "[A VALIDAR]" (confira no Mixar); sem BPM ou sem tom a faixa fica pendente (nada é inventado). Nenhum áudio é baixado.
 
 Args:
   - playlist: ID/link da playlist, ou track_ids: lista de IDs/links
-  - limit: máximo de faixas (padrão 50). A ReccoBeats responde em lotes de 40; cada faixa que ela não cobre custa até 2 buscas no GetSongBPM (1 a cada 1,5 s)
+  - limit: máximo de faixas (padrão 50). A ReccoBeats responde em lotes de 40 IDs
   - dry_run: padrão true (só mostra). Só grava no armazenamento com dry_run=false.`,
       inputSchema: z
         .object({
@@ -91,7 +85,6 @@ Args:
           () =>
             [
               `${dry_run ? "Simulação (dry run): nada foi gravado." : `${report.saved} faixa(s) gravada(s).`} ${report.rows.length} faixa(s) consultada(s): ${count("save")} com dado novo, ${count("keep")} mantida(s), ${count("pending")} pendente(s).`,
-              ...(d.getsongbpm ? [] : ["Aviso: GETSONGBPM_API_KEY não definida; faixas fora da ReccoBeats ficam pendentes."]),
               ...(report.stopped ? [`Interrompido: ${report.stopped}`] : []),
               "",
               ...report.rows.map((row) => rowLine(row, dry_run)),
@@ -108,7 +101,7 @@ Args:
     "metadata_coverage",
     {
       title: "Cobertura de BPM e tom de uma playlist",
-      description: `Conta, para uma playlist, de onde vêm BPM e tom salvos: mixar (Mixar ou outra fonte do usuário), web (BPM conferido pela ReccoBeats; tom da web sempre a validar), [A VALIDAR] (BPM divergente ou só do GetSongBPM) e pendente (sem dado). Lista as pendências. Só leitura.
+      description: `Conta, para uma playlist, de onde vêm BPM e tom salvos: mixar (Mixar ou outra fonte do usuário), web (BPM conferido pela ReccoBeats; tom da web sempre a validar), [A VALIDAR] (entradas antigas com BPM a validar) e pendente (sem dado). Lista as pendências. Só leitura.
 
 Args:
   - playlist: ID ou link da playlist`,
