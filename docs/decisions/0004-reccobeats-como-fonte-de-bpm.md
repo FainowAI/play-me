@@ -28,6 +28,7 @@ Data: 29/09/2026 · Decisão D24 · Revê as fontes do ADR 0002 (a rota por meta
 
 ## Consequências
 
+- Gravação da Eletro (29/09/2026, `dry_run=false`): 414 faixas gravadas, 22 do Mixar mantidas sem alteração, 121 pendentes (sem BPM em nenhuma fonte; o GetSongBPM não achou nenhuma). Store: 436 de 557 faixas (78 %).
 - Resultado com a ferramenta, em dry run: 43 de 50 faixas com BPM conferido e tom [A VALIDAR], 7 pendentes; nas 22 com Mixar, BPM confere em 11 de 11. `analysis.json` intacto.
 - O lookup ficou rápido: a ReccoBeats responde em lotes de 40, e o GetSongBPM só roda para cerca de 14 % das faixas. O limite padrão do `metadata_lookup` subiu de 15 para 50 faixas.
 - Só os IDs do Spotify saem da máquina para a ReccoBeats. Nome e artista só vão ao GetSongBPM, nas faixas de reserva.

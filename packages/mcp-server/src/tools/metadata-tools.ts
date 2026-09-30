@@ -42,14 +42,14 @@ async function readTracks(playlist: string | undefined, trackIds: string[] | und
 
 const fmtBpm = (bpm: number | null | undefined): string => (bpm == null ? "—" : String(bpm));
 
-function rowLine(row: LookupRow): string {
+function rowLine(row: LookupRow, dryRun: boolean): string {
   const r = row.reccobeats ? `ReccoBeats ${fmtBpm(row.reccobeats.bpm)} BPM, ${row.reccobeats.camelot ?? "sem tom"}` : "ReccoBeats: não achou";
   const g = row.getsongbpm ? ` · GetSongBPM ${fmtBpm(row.getsongbpm.bpm)} BPM, ${row.getsongbpm.key ?? "sem tom"}` : "";
   const e = row.existing ? ` · salvo: ${row.existing.bpm} BPM ${row.existing.camelot} (${row.existing.source ?? "usuário"})` : "";
   const o = row.outcome;
   const result =
     o.action === "save"
-      ? `→ salvaria ${o.entry.bpm} BPM ${o.entry.camelot}${o.entry.notes ? ` (${o.entry.notes})` : ""}`
+      ? `→ ${dryRun ? "salvaria" : "salvou"} ${o.entry.bpm} BPM ${o.entry.camelot}${o.entry.notes ? ` (${o.entry.notes})` : ""}`
       : o.action === "keep"
         ? `→ mantém (${o.reason})`
         : `→ pendente (${o.reason})`;
@@ -94,7 +94,7 @@ Args:
               ...(d.getsongbpm ? [] : ["Aviso: GETSONGBPM_API_KEY não definida; faixas fora da ReccoBeats ficam pendentes."]),
               ...(report.stopped ? [`Interrompido: ${report.stopped}`] : []),
               "",
-              ...report.rows.map(rowLine),
+              ...report.rows.map((row) => rowLine(row, dry_run)),
             ].join("\n"),
           { ...report },
         );

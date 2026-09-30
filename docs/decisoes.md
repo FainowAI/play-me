@@ -30,20 +30,23 @@ Toda decisão nova entra aqui e no quadro do projeto: https://claude.ai/artifact
 | D22 | 28/09/2026 | MVP por metadados; análise de áudio vira trilha opcional (ADR 0002). | Comprar 527 faixas é inviável. |
 | D23 | 29/09/2026 | Telas no canvas "Play.Me · Telas do MVP" (cópia em `design/telas/`), no lugar do Google Stitch; revisa a D09 (ADR 0003). | Decisão do usuário; o canvas já usa os componentes do design system. |
 | D24 | 29/09/2026 | ReccoBeats é a fonte principal de BPM e tom (por ID do Spotify, em lote); GetSongBPM vira reserva; Deezer sai. BPM da ReccoBeats é conferido; tom da web é sempre [A VALIDAR]; Mixar segue como verdade (ADR 0004). | Teste: BPM confere com o Mixar em 11 de 11 e cobre 43 de 50 faixas; o tom divergiu em 8 de 11. Spotify `audio-features` dá 403 para o app. |
+| D25 | 29/09/2026 | Escopo do v1 (fecha P03): chat + BPM e tom por metadados (ReccoBeats) + set + transições por metadados com guia do Mix + aprovação → playlist no Spotify. Fora do v1: trilha de áudio, prévia renderizada, export Rekordbox, editor de curvas, motor em tempo real, set tocando no app. | A Fase M cobriu 436 de 557 faixas da Eletro sem arquivo de áudio. |
+| D26 | 29/09/2026 | Prazo (fecha P04): Sprint 0 de 3 dias e 4 sprints de 1 semana, de 30/09 a 30/10/2026, com validação no fim de cada sprint (EAP). | Cada sprint entrega algo testável; as telas já estão prontas (D21). |
+| D27 | 29/09/2026 | Uso pessoal, single-user (fecha P05). Estados do set: rascunho → aguardando aprovação → enviado; enviado é final, e ajuste depois do envio vira nova versão e nova playlist. | Licenças NC/GPL seguem aceitáveis (D10); nunca editar playlist existente (D01). |
+| D28 | 29/09/2026 | Jev numa sprint própria (Sprint 4), sempre com fallback de regras (fecha P02). A chave TYPESAFE_API_KEY já está no `.env`; acesso e SDK oficial são validados na sprint. | Acesso de terceiro não trava o MVP. |
+| D29 | 29/09/2026 | GetSongBPM sai do projeto (fecha P09): a ReccoBeats é a única fonte web de BPM e tom. A remoção do código é o item 1 do prompt 04. | Na gravação da Eletro, o GetSongBPM não achou nenhuma das 121 faixas pendentes; sem ele, o backlink deixa de ser exigido. |
+| D30 | 29/09/2026 | Planejador de transições por metadados e guia do Mix em TypeScript, dentro do MCP (`transition_plan`, `export_mix_guide`), reusando `camelot.ts` e `dj-engine.ts`. O analisador Python fica só para a trilha de áudio. | Sem áudio não há trabalho para o Python; o motor de harmonia e BPM já existe no MCP. |
+
+EAP e roadmap: `docs/eap_play-me_fainow.md` (29/09/2026).
 
 ## Pendentes
 
 | # | Pergunta | Recomendação |
 |---|---|---|
-| P02 | Acesso ao early access do Jev e API key. | Entrar na fila já; construir com regras e plugar o Jev numa sprint própria. |
-| P03 | Escopo do v1. | v1 = chat + BPM e tom por metadados + set + transições por metadados com guia do Mix + aprovação. Fora: render no app, motor em tempo real, export Rekordbox, editor de curvas, estrutura por compasso (trilha de áudio opcional). |
-| P04 | Prazo e ritmo. | 4 semanas, sprints de 1 semana, telas do Stitch em paralelo na semana 1. |
-| P05 | Rodada 2 do briefing: estados do set, uso pessoal ou produto. | A definir na rodada 2. |
-| P09 | Onde fica o backlink público do GetSongBPM. | A definir; os termos da API exigem link público para getsongbpm.com (ADR 0002). |
+| — | Nenhuma em aberto. P02, P03, P04, P05 e P09 fechadas pelas D25 a D29. | Novas pendências entram aqui. |
 
 ## Próximo passo (29/09/2026)
 
-1. Revisar o dry run da Eletro e gravar com `metadata_lookup dry_run=false` (ReccoBeats, D24).
-2. Conferir no Mixar o tom das faixas que entram no set (tom da web é [A VALIDAR]).
-3. Fechar o P03 com esse escopo e seguir para a Fase P.
-2. Fase P: planejador por metadados.
+1. Prompt 04 (`docs/prompts/04-fase-p-planejador.md`): Sprint 0 e 1, Fase P. Ter à mão a lista de presets do Mix do app do Spotify.
+2. Prompt 05 (Sprint 2): servidor local. Prompt 06 (Sprint 3): interface.
+3. Sprint 4 (Fase K) com o `feature-builder`, depois da Sprint 3.
