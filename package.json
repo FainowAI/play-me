@@ -9,6 +9,6 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "pretest": "npm run build",
-    "test": "npm run test:engine -w packages/mcp-server && npm run test:server -w packages/mcp-server && npm run test:metadata -w packages/mcp-server && npm run test:planner -w packages/mcp-server"
+    "test": "npm run test:engine -w packages/mcp-server && npm run test:server -w packages/mcp-server && npm run test:metadata -w packages/mcp-server && npm run test:planner -w packages/mcp-server && npm run test:repo -w @playme/server && npm run test:agent -w @playme/server && npm run test:http -w @playme/server"
   }
 }

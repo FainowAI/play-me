@@ -61,17 +61,17 @@ Legenda: ✅ feito · ⬜ a fazer.
       2.3.1 ✅ Plano por passagem em dj_build_set e dj_evaluate_order, com penalidade para par só com cut/echo
   3. Montagem e versões do set
     3.1 Persistência local
-      3.1.1 ⬜ Schema SQLite (sets, versões, planos, notas, aprovações, sessões)
-      3.1.2 ⬜ Repositório de sets e versões no apps/server
+      3.1.1 ✅ Schema SQLite (sets, versões, planos, notas, aprovações, sessões)
+      3.1.2 ✅ Repositório de sets e versões no apps/server
     3.2 Estados do set
-      3.2.1 ⬜ Máquina de estados rascunho → aguardando aprovação → enviado
+      3.2.1 ✅ Máquina de estados rascunho → aguardando aprovação → enviado
     3.3 Versões
       3.3.1 ⬜ Nova versão a cada ajuste pedido no chat
   4. Chat de DJ — servidor (Fase C)
     4.1 Agente local
-      4.1.1 ⬜ apps/server: Agent SDK + MCP spotify-dj
-      4.1.2 ⬜ Streaming SSE para a UI
-      4.1.3 ⬜ Sessões persistidas e retomáveis
+      4.1.1 ✅ apps/server: Agent SDK + MCP spotify-dj
+      4.1.2 ✅ Streaming SSE para a UI
+      4.1.3 ✅ Sessões persistidas e retomáveis
   5. Chat de DJ — interface (Fase C) · especificação: canvas + design/telas-referencia.md (D31)
     5.1 Shell
       5.1.1 ⬜ Vite + React + Tailwind com tokens do DESIGN.md; componentes reais do design system portados para TSX
@@ -83,7 +83,7 @@ Legenda: ✅ feito · ⬜ a fazer.
       5.2.4 ⬜ Configurações (conexões, tema, pesos)
   6. Aprovação e envio ao Spotify
     6.1 Gate
-      6.1.1 ⬜ Permissão do Agent SDK para spotify_create_playlist_from_order
+      6.1.1 ✅ Permissão do Agent SDK para spotify_create_playlist_from_order
       6.1.2 ⬜ Card ApprovalGate + endpoint aprovar/rejeitar
     6.2 Envio
       6.2.1 ⬜ Tela Enviado + aba Guia do Mix; status enviado com link

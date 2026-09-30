@@ -37,6 +37,8 @@ Toda decisão nova entra aqui e no quadro do projeto: https://claude.ai/artifact
 | D29 | 29/09/2026 | GetSongBPM sai do projeto (fecha P09): a ReccoBeats é a única fonte web de BPM e tom. A remoção do código é o item 1 do prompt 04. | Na gravação da Eletro, o GetSongBPM não achou nenhuma das 121 faixas pendentes; sem ele, o backlink deixa de ser exigido. |
 | D30 | 29/09/2026 | Planejador de transições por metadados e guia do Mix em TypeScript, dentro do MCP (`transition_plan`, `export_mix_guide`), reusando `camelot.ts` e `dj-engine.ts`. O analisador Python fica só para a trilha de áudio. | Sem áudio não há trabalho para o Python; o motor de harmonia e BPM já existe no MCP. |
 | D31 | 29/09/2026 | As telas do canvas "Play.Me · Telas do MVP" são a especificação de construção da `apps/web`: layout do canvas, componentes reais do design system portados para TSX. Onde o texto do canvas diverge das decisões (fontes de dados, Jev, contagens), valem as decisões. Guia: `design/telas-referencia.md`. | Pedido do usuário: construir seguindo o canvas; o canvas é anterior às D24 a D30. |
+| D32 | 29/09/2026 | Modelo padrão do agente: Claude Haiku 4.5 (`PLAYME_MODEL`), com teto de US$ 0,50 por turno. Opus 5.5 ou Sonnet 5.5 por variável, sem mudar código. | Mesmo pedido de set: US$ 0,024–0,030 no Haiku contra US$ 0,134 no Opus; o trabalho pesado é do MCP (ADR 0006). |
+| D33 | 29/09/2026 | Servidor local em `apps/server`: node:http + SSE, node:sqlite, Agent SDK só com ferramentas do spotify-dj; gate de aprovação no `canUseTool`; proteção contra DNS rebinding e requisição forjada (Host, Origin, JSON obrigatório) (ADR 0006). | Auditoria de segurança achou 2 falhas altas na borda HTTP; corrigidas antes do fechamento. |
 
 EAP e roadmap: `docs/eap_play-me_fainow.md` (29/09/2026).
 
@@ -48,7 +50,7 @@ EAP e roadmap: `docs/eap_play-me_fainow.md` (29/09/2026).
 
 ## Próximo passo (29/09/2026)
 
-1. Sprint 0 e Sprint 1 entregues em 29/09 (Fase P): planejador por metadados, `transition_plan`, `export_mix_guide`, plano por passagem no set e penalidade de echo out (ADR 0005). O set [DJ MIX] Eletro tem plano válido nas 20 passagens.
-2. Pendente da Fase P: confirmar no app outros presets do Mix além de Fade e Rise (2.2.1).
-3. Prompt 05 (Sprint 2): servidor local. Prompt 06 (Sprint 3): interface.
+1. Sprints 0, 1 e 2 entregues em 29/09: Fase P (ADR 0005) e o servidor local da Fase C (ADR 0006). O agente monta sets pelo chat e o envio ao Spotify espera o clique de aprovação.
+2. Sprint 3: prompt 06 (`apps/web`, telas do canvas, D31).
+3. Pendente da Fase P: confirmar no app outros presets do Mix além de Fade e Rise (2.2.1).
 4. Sprint 4 (Fase K) com o `feature-builder`, depois da Sprint 3.
