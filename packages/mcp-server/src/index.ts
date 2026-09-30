@@ -11,12 +11,14 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { loadDotEnvIfPresent } from "./services/config.js";
 import { registerDjTools } from "./tools/dj-tools.js";
+import { registerMetadataTools } from "./tools/metadata-tools.js";
 import { registerSpotifyTools } from "./tools/spotify-tools.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
   registerSpotifyTools(server);
   registerDjTools(server);
+  registerMetadataTools(server);
   return server;
 }
 

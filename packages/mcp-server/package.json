@@ -15,6 +15,7 @@
     "dev": "tsx src/index.ts",
     "test:engine": "node dist/tests/engine.test.js",
     "test:server": "node dist/tests/server.test.js",
+    "test:metadata": "node dist/tests/metadata.test.js",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "engines": {

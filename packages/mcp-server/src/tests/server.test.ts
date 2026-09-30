@@ -41,6 +41,8 @@ try {
     "dj_evaluate_order",
     "dj_score_transition",
     "dj_set_track_analysis",
+    "metadata_coverage",
+    "metadata_lookup",
     "spotify_auth_status",
     "spotify_create_playlist_from_order",
     "spotify_get_playlist_tracks",

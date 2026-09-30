@@ -204,6 +204,10 @@ export class SpotifyClient {
     }
   }
 
+  async getTrack(trackId: string): Promise<SpotifyTrackSummary> {
+    return trackToSummary(await this.request<RawTrack>("GET", `/tracks/${trackId}`), 0, false);
+  }
+
   async searchTracks(query: string, limit: number): Promise<SpotifyTrackSummary[]> {
     const result = await this.request<{ tracks?: RawPaging<RawTrack> }>("GET", "/search", {
       query: { q: query, type: "track", limit: Math.min(limit, LIMITS.searchMax) },
@@ -240,6 +244,7 @@ interface RawTrack {
   type?: string;
   duration_ms?: number;
   artists?: { name?: string }[];
+  external_ids?: { isrc?: string };
 }
 
 interface RawPlaylistItem {
@@ -269,6 +274,7 @@ function trackToSummary(track: RawTrack, position: number, isLocal: boolean): Sp
     name: track.name ?? "(sem nome)",
     artists: (track.artists ?? []).map((artist) => artist.name ?? "").filter(Boolean),
     duration_ms: track.duration_ms ?? null,
+    isrc: track.external_ids?.isrc ?? null,
     is_local: isLocal,
     type: track.type ?? "track",
   };
@@ -284,6 +290,7 @@ function toTrackSummary(entry: RawPlaylistItem, position: number): SpotifyTrackS
       name: "(item indisponível)",
       artists: [],
       duration_ms: null,
+      isrc: null,
       is_local: Boolean(entry.is_local),
       type: "unknown",
     };

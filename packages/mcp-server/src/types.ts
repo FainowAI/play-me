@@ -44,6 +44,7 @@ export interface SpotifyTrackSummary {
   name: string;
   artists: string[];
   duration_ms: number | null;
+  isrc: string | null; // external_ids.isrc; nunca persistido
   is_local: boolean;
   type: string;
 }
