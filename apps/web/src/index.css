@@ -1,0 +1,96 @@
+/* Play.Me — base da apps/web. Cor, tipo, espaço e raio vêm SÓ de design/playme-tokens.css (DESIGN.md §9.1). */
+/* Os tokens vêm antes do Tailwind: o @import das fontes (Geist) dentro deles precisa ficar antes de qualquer regra. */
+@import "../../../design/playme-tokens.css";
+@import "tailwindcss";
+@import "./components/playme/playme.css";
+
+/* Tailwind lê os tokens por referência (inline → var()), então o tema troca com data-theme. */
+@theme inline {
+  --color-*: initial;
+  --color-surface-base: var(--surface-base);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-overlay: var(--surface-overlay);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-ink-inverse: var(--ink-inverse);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-on-signal: var(--on-signal);
+  --color-focus-ring: var(--focus-ring);
+  --color-deck-a: var(--deck-a);
+  --color-deck-b: var(--deck-b);
+  --color-on-deck: var(--on-deck);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-scrim: var(--scrim);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-pill: var(--radius-pill);
+  --shadow-float: var(--shadow-float);
+  --ease-standard: var(--ease-standard);
+  --ease-out: var(--ease-out);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--surface-base);
+  color: var(--ink);
+  font: 400 15px/24px var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* a rolagem é das colunas, nunca da página (DESIGN.md §9.6) */
+}
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Movimento (DESIGN.md §4): 120 ms hover · 200 ms abrir · 400 ms reordenar, ease-standard.
+   Reordenar = View Transitions nas linhas do set (view-transition-name por faixa); só as linhas nomeadas se movem. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-group(*) {
+  animation-duration: var(--duration-slow);
+  animation-timing-function: var(--ease-standard);
+}
+
+/* DESIGN.md §9.8: com prefers-reduced-motion nada anima (o orb: a própria biblioteca mostra um quadro estático). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

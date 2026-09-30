@@ -1,0 +1,31 @@
+{
+  "name": "@playme/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interface do chat de DJ do Play.Me: telas do canvas (D31), componentes do design system e o painel do set.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "test:ui": "node --no-warnings src/tests/logic.test.ts && node --no-warnings src/panel/logic.test.ts && node --no-warnings src/shell/text.check.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "thinking-orbs": "0.3.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5.7.2",
+    "vite": "8.3.1"
+  }
+}

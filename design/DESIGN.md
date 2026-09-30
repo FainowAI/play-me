@@ -109,7 +109,7 @@ intro #61AFDA · groove #7F8699 · build #F5AE39 · drop #FF6557 · break #58C8A
 
 O estado "o agente está trabalhando" usa **thinking-orbs** (`npm install thinking-orbs`, MIT, Jakub Antalik, https://libraries.dev/orbs). Esfera de pontos em canvas 2D, tinta monocromática, segue `data-theme` sozinha, quadro estático com `prefers-reduced-motion`, pausa fora da tela.
 
-Envolver em `AgentOrb` (`apps/web/src/components/AgentOrb.tsx`) com o mapa abaixo. O `ToolCall` escolhe a atividade pelo nome da ferramenta.
+Envolver em `AgentOrb` (`apps/web/src/components/playme/AgentOrb.tsx`) com o mapa abaixo. O `ToolCall` escolhe a atividade pelo nome da ferramenta.
 
 | Atividade | Estado do orb | Ferramentas / momento |
 |---|---|---|

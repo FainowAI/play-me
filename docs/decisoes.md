@@ -39,6 +39,9 @@ Toda decisão nova entra aqui e no quadro do projeto: https://claude.ai/artifact
 | D31 | 29/09/2026 | As telas do canvas "Play.Me · Telas do MVP" são a especificação de construção da `apps/web`: layout do canvas, componentes reais do design system portados para TSX. Onde o texto do canvas diverge das decisões (fontes de dados, Jev, contagens), valem as decisões. Guia: `design/telas-referencia.md`. | Pedido do usuário: construir seguindo o canvas; o canvas é anterior às D24 a D30. |
 | D32 | 29/09/2026 | Modelo padrão do agente: Claude Haiku 4.5 (`PLAYME_MODEL`), com teto de US$ 0,50 por turno. Opus 5.5 ou Sonnet 5.5 por variável, sem mudar código. | Mesmo pedido de set: US$ 0,024–0,030 no Haiku contra US$ 0,134 no Opus; o trabalho pesado é do MCP (ADR 0006). |
 | D33 | 29/09/2026 | Servidor local em `apps/server`: node:http + SSE, node:sqlite, Agent SDK só com ferramentas do spotify-dj; gate de aprovação no `canUseTool`; proteção contra DNS rebinding e requisição forjada (Host, Origin, JSON obrigatório) (ADR 0006). | Auditoria de segurança achou 2 falhas altas na borda HTTP; corrigidas antes do fechamento. |
+| D34 | 30/09/2026 | Interface `apps/web` construída tela por tela a partir do canvas (D31): React 19 + Vite 8 + TypeScript strict + Tailwind 4 lendo os tokens; os 15 componentes do design system portados para TSX; orb de pensamento do `thinking-orbs` (única animação contínua, segue o tema sozinho); hover 120 ms, abrir 200 ms (`<dialog>` nativo com scrim), reordenar 400 ms (View Transitions nas faixas); `prefers-reduced-motion` desliga tudo (ADR 0007). | Pedido do usuário: as mesmas telas e animações do artefato; DESIGN.md §4 e §9. |
+| D35 | 30/09/2026 | O SQLite guarda, por versão do set, o snapshot do `dj_build_set` (rótulo "Título — Artista", BPM, tom, energia, origem do dado) e os turnos do chat; playlists e status vêm do cliente Spotify do MCP; pesos da nota em `data/settings.json`, injetados no prompt do agente; a conversa aberta vive no hash da URL (ADR 0007). Revisa a nota da Sprint 2 de "só IDs no banco". | Sem nome de faixa o painel e as versões antigas não existem; recarregar perdia a conversa. Uso pessoal, banco local. |
+| D36 | 30/09/2026 | O gate de envio recusa `spotify_create_playlist_from_order` cujos IDs não pertencem ao set atual (snapshot da última versão) antes de pedir o clique. | No teste real o Haiku mandou 23 IDs inventados ao gate; o usuário não tem como conferir IDs no card. |
 
 EAP e roadmap: `docs/eap_play-me_fainow.md` (29/09/2026).
 
@@ -46,11 +49,13 @@ EAP e roadmap: `docs/eap_play-me_fainow.md` (29/09/2026).
 
 | # | Pergunta | Recomendação |
 |---|---|---|
-| — | Nenhuma em aberto. P02, P03, P04, P05 e P09 fechadas pelas D25 a D29. | Novas pendências entram aqui. |
+| P10 | Tamanho do set: `dj_build_set` ordena TODAS as faixas analisadas da playlist (137 na Eletro); "1h30" não limita nada. | Sprint 4: parâmetro de duração ou quantidade no montador, com seleção pela curva antes da ordenação. |
+| P11 | Haiku 4.5 com resultado grande de ferramenta: o SDK grava o resultado em arquivo e o modelo tenta "ler o arquivo" (bash, PowerShell), repetindo `dj_build_set` e gastando turnos. | O prompt já proíbe; se persistir, `PLAYME_MODEL=claude-sonnet-5-5` ou reduzir a saída da ferramenta (P10 ajuda). |
+| P12 | Faixas da web não têm energia: "mais energia no meio" não muda a ordem (ordem igual = sem versão nova) e a curva usa só o alvo. | Sprint 4: usar o `energy` da ReccoBeats (já nas notas do store) como estimativa marcada com *. |
 
-## Próximo passo (29/09/2026)
+## Próximo passo (30/09/2026)
 
-1. Sprints 0, 1 e 2 entregues em 29/09: Fase P (ADR 0005) e o servidor local da Fase C (ADR 0006). O agente monta sets pelo chat e o envio ao Spotify espera o clique de aprovação.
-2. Sprint 3: prompt 06 (`apps/web`, telas do canvas, D31).
+1. Sprints 0 a 3 entregues: Fase P (ADR 0005), servidor local (ADR 0006) e interface (ADR 0007). Fluxo ponta a ponta verificado no navegador em 30/09: pedido de set, card de aprovação, rejeição (set volta a rascunho) e aprovação com o clique do usuário (playlist "[DJ MIX] Eletro - Techno Set", 23 faixas, privada).
+2. Sprint 4 (Fase K): prompt 07 com o `feature-builder`. Entram P10 (tamanho do set), P12 (energia da web), as notas 1–5 e a validação do Jev.
 3. Pendente da Fase P: confirmar no app outros presets do Mix além de Fade e Rise (2.2.1).
-4. Sprint 4 (Fase K) com o `feature-builder`, depois da Sprint 3.
+4. Canvas: corrigir os textos divergentes (GetSongBPM e Deezer → ReccoBeats, "Jev sem acesso", 548 faixas) sem mexer no layout.

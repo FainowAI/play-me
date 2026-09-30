@@ -66,7 +66,7 @@ Legenda: ✅ feito · ⬜ a fazer.
     3.2 Estados do set
       3.2.1 ✅ Máquina de estados rascunho → aguardando aprovação → enviado
     3.3 Versões
-      3.3.1 ⬜ Nova versão a cada ajuste pedido no chat
+      3.3.1 ✅ Nova versão a cada ajuste pedido no chat
   4. Chat de DJ — servidor (Fase C)
     4.1 Agente local
       4.1.1 ✅ apps/server: Agent SDK + MCP spotify-dj
@@ -74,19 +74,19 @@ Legenda: ✅ feito · ⬜ a fazer.
       4.1.3 ✅ Sessões persistidas e retomáveis
   5. Chat de DJ — interface (Fase C) · especificação: canvas + design/telas-referencia.md (D31)
     5.1 Shell
-      5.1.1 ⬜ Vite + React + Tailwind com tokens do DESIGN.md; componentes reais do design system portados para TSX
-      5.1.2 ⬜ Sidebar, coluna do chat, composer, AgentOrb (D20)
+      5.1.1 ✅ Vite + React + Tailwind com tokens do DESIGN.md; componentes reais do design system portados para TSX
+      5.1.2 ✅ Sidebar, coluna do chat, composer, AgentOrb (D20)
     5.2 Telas do fluxo (D21)
-      5.2.1 ⬜ Início e Conversa (ThinkingStatus, ToolCall)
-      5.2.2 ⬜ Set proposto + SetPanel (ordem, curva de energia, transições)
-      5.2.3 ⬜ Transição expandida e gaveta da Faixa
-      5.2.4 ⬜ Configurações (conexões, tema, pesos)
+      5.2.1 ✅ Início e Conversa (ThinkingStatus, ToolCall)
+      5.2.2 ✅ Set proposto + SetPanel (ordem, curva de energia, transições)
+      5.2.3 ✅ Transição expandida e gaveta da Faixa
+      5.2.4 ✅ Configurações (conexões, tema, pesos)
   6. Aprovação e envio ao Spotify
     6.1 Gate
       6.1.1 ✅ Permissão do Agent SDK para spotify_create_playlist_from_order
-      6.1.2 ⬜ Card ApprovalGate + endpoint aprovar/rejeitar
+      6.1.2 ✅ Card ApprovalGate + endpoint aprovar/rejeitar
     6.2 Envio
-      6.2.1 ⬜ Tela Enviado + aba Guia do Mix; status enviado com link
+      6.2.1 ✅ Tela Enviado + aba Guia do Mix; status enviado com link
   7. Calibração e Jev (Fase K)
     7.1 Notas
       7.1.1 ⬜ Nota 1–5 por transição (transition_feedback)
@@ -194,7 +194,9 @@ Os prompts ficam em arquivos próprios, prontos para colar no Claude Code aberto
 | 05 · Servidor local com Agent SDK | `docs/prompts/05-fase-c-servidor.md` | 2 | 3.1, 3.2, 4.1, 6.1.1 |
 | 06 · Interface do chat | `docs/prompts/06-fase-c-interface.md` | 3 | 5.1, 5.2, 6.1.2, 6.2, 3.3 |
 
-A Sprint 4 (Fase K) vira prompt 07 depois da Sprint 3, com o `feature-builder`: ele lê o código que existir, em vez de supor.
+| 07 · Calibração e Jev | `docs/prompts/07-fase-k-calibracao.md` | 4 | 7.1, 7.2, 7.3 + P10, P12 |
+
+O prompt 07 roda com o `feature-builder`: ele lê o código que existe em vez de supor.
 
 ## Regras de negócio consolidadas
 
@@ -237,7 +239,7 @@ Alimentam os gates do `feature-builder` e a seção de regras do `CLAUDE.md`.
 ### Sequência de execução pós-planejamento
 1. ⬜ Colar `docs/prompts/04-fase-p-planejador.md` no Claude Code (Sprint 0 e 1).
 2. ⬜ Rodar `codebase-cleanup` no MCP.
-3. ⬜ Prompt 05 (Sprint 2), depois prompt 06 (Sprint 3).
+3. ✅ Prompt 05 (Sprint 2) e prompt 06 (Sprint 3), entregues em 29 e 30/09.
 4. ⬜ Rodar `codebase-cleanup` em `apps/`.
 5. ⬜ Sprint 4 com o `feature-builder` (Fase K).
 

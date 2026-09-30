@@ -1,11 +1,15 @@
 /** Ponto de entrada do servidor local. */
 import { existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ApprovalWaiter } from "./approvals.js";
 import { runChat, type ChatDeps } from "./agent.js";
 import { openRepo } from "./repo.js";
 import { createHttpServer } from "./server.js";
+import { SettingsStore } from "./settings.js";
+import { createSpotify } from "./spotify.js";
+import type { Status } from "./types.js";
 
 // dist/main.js → apps/server/dist → raiz = três níveis acima do arquivo
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -32,9 +36,19 @@ for (const k of ["SPOTIFY_CLIENT_ID", "SPOTIFY_REDIRECT_URI", "SPOTIFY_DJ_DATA_D
   const v = process.env[k];
   if (v) mcpEnv[k] = v;
 }
-const chatDeps: ChatDeps = { repo, waiter, mcpServerPath, mcpEnv, model: process.env.PLAYME_MODEL || "claude-haiku-4-5", maxBudgetUsd: Number(process.env.PLAYME_MAX_BUDGET_USD) || 0.5 };
+const spotify = createSpotify();
+const settings = new SettingsStore(path.join(dataDir, "settings.json"));
+// mesma pasta que o MCP usa para analysis.json e tokens.json (config.ts do MCP)
+const storeDir = (process.env.SPOTIFY_DJ_DATA_DIR ?? "").trim() || path.join(homedir(), ".spotify-dj-mcp");
+const model = process.env.PLAYME_MODEL || "claude-haiku-4-5";
+const chatDeps: ChatDeps = {
+  repo, waiter, mcpServerPath, mcpEnv, model, maxBudgetUsd: Number(process.env.PLAYME_MAX_BUDGET_USD) || 0.5,
+  storeDir, settings, playlistName: spotify.nameOf,
+};
+// só se existem: a chave nunca sai daqui
+const status = (): Status => ({ model, anthropic: true, spotify: { connected: spotify.connected() }, reccobeats: true, jev: !!process.env.TYPESAFE_API_KEY?.trim() });
 
-const server = createHttpServer({ repo, waiter, chat: (id, msg, emit, signal) => runChat(chatDeps, id, msg, emit, signal) });
+const server = createHttpServer({ repo, waiter, status, playlists: spotify.playlists, settings, chat: (id, msg, emit, signal) => runChat(chatDeps, id, msg, emit, signal) });
 const port = Number(process.env.PLAYME_SERVER_PORT || 8787);
 server.listen(port, "127.0.0.1", () => console.log(`Play.Me server em http://127.0.0.1:${port}`));
 

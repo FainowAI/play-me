@@ -330,7 +330,7 @@ Cada fase fecha com critério de aceite verificável. Não pular.
 
 - **Fase M — Metadados (concluída em 29/09).** BPM e tom pela ReccoBeats, com o Mixar como verdade (`metadata_lookup`, `metadata_coverage`; ADR 0004). Eletro gravada: 436 de 557 faixas (22 Mixar, 414 web); tom da web fica [A VALIDAR].
 - **Fase P — Planejador por metadados (concluída em 29/09, ADR 0005).** `TransitionPlan` sem estrutura, em TypeScript no MCP (D30): tipo e comprimento por BPM, tom e energia, mais o guia do Mix. Falta confirmar presets do Mix além de Fade e Rise.
-- **Fase C: Sprint 2 (servidor, ADR 0006) concluída em 29/09; próximo: Sprint 3, interface (prompt 06).**
+- **Fase C concluída: Sprint 2 (servidor, ADR 0006) em 29/09 e Sprint 3 (interface, ADR 0007) em 30/09; próximo: Sprint 4, Fase K (prompt 07).**
 - **Fase C — Chat.** `apps/server` com Agent SDK e `apps/web` com as telas da D21.
 - **Fase K — Calibração.** Ajustar regras e pesos com as notas de `transition_feedback`.
 - **Trilha de áudio (opcional, quando houver arquivos):** antigas Fases 0 a 3 — protótipo da grade (Beat This!, suspenso em 28/09, ver prompt 02), casamento, análise básica, análise profunda.
@@ -347,11 +347,12 @@ Cada fase fecha com critério de aceite verificável. Não pular.
 
 ## Estado atual
 
-- Rota por metadados (D22, D24). Fases M e P e o servidor da Fase C concluídos; próximo: prompt 06 (interface). Escopo, prazo, estados do set e Jev fechados nas D25 a D30; EAP em `docs/eap_play-me_fainow.md`.
+- Rota por metadados (D22, D24). Fases M, P e C concluídas; próximo: prompt 07 (Fase K). Escopo, prazo, estados do set e Jev fechados nas D25 a D30; EAP em `docs/eap_play-me_fainow.md`.
 - `packages/mcp-server`: cópia do MCP em uso (original em `Desktop\mcps\spotify-dj-mcp-server`, que segue ativo no Claude Desktop). 15 ferramentas: as 11 originais (OAuth PKCE, análise manual do Mixar, montador de set por busca em feixe, criação de playlist `[DJ MIX]` privada), `metadata_lookup` e `metadata_coverage` (Fase M), `transition_plan` e `export_mix_guide` (Fase P, ADR 0005).
 - Store do MCP (`~/.spotify-dj-mcp/analysis.json`): 436 faixas da Eletro (22 do Mixar, 414 da ReccoBeats). Entrada do Mixar nunca é sobrescrita. Backup anterior à gravação: `analysis.backup-2026-09-29.json`.
 - `services/analyzer`: `decode.py` e `grid.py` prontos e testados na parte pura; Beat This! e PyTorch não instalados (trilha de áudio suspensa). ffmpeg ainda não está no WSL.
 - Jev: chave no `.env`; acesso e SDK validados na Sprint 4 (D28).
-- `apps/server`: pronto (ADR 0006). Agent SDK com Haiku 4.5 por padrão (D32), SSE, SQLite em `data/playme.sqlite`, gate de aprovação e proteção local (D33). Rodar: `npm run build` e `npm run start -w @playme/server`.
-- UI: telas aprovadas no canvas (D21, D23), cópia em `design/telas/`. Nenhum código de front ainda (Sprint 3).
+- `apps/server`: pronto (ADR 0006). Agent SDK com Haiku 4.5 por padrão (D32), SSE, SQLite em `data/playme.sqlite`, gate de aprovação e proteção local (D33). Rodar: `npm run build` e `npm run start -w @playme/server`. API v2 na Sprint 3: snapshot do set por versão, turnos gravados, `/api/status`, `/api/playlists`, `/api/settings`, gate recusa IDs fora do set (D35, D36).
+- `apps/web`: pronta (ADR 0007). React 19 + Vite 8 + Tailwind 4 com os tokens; componentes do design system em `src/components/playme/`; orb do `thinking-orbs`; a conversa aberta fica no hash da URL. Rodar: `npm run dev -w @playme/web` (http://127.0.0.1:5173) com o servidor no ar.
+- UI: telas do canvas (D21, D23, D31) com os textos já pelas decisões (ReccoBeats, Jev com chave, contagem real); o canvas em si ainda mostra GetSongBPM/Deezer e 548 faixas.
 - Nome do software: Play.Me. Design system pronto em `design/DESIGN.md` e `design/playme-tokens.css` (critérios de aceite da UI na seção 9 do DESIGN.md).

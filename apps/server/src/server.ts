@@ -1,12 +1,19 @@
-/** Servidor HTTP (node:http puro): SSE do chat, leitura de sessões/sets e decisão de approvals. */
+/** Servidor HTTP (node:http puro): SSE do chat, leitura de sessões/sets, status, playlists, configurações e decisão de approvals. */
 import http from "node:http";
+import { AuthRequiredError } from "spotify-dj-mcp-server/dist/services/auth.js";
+import { mixGuideStep } from "spotify-dj-mcp-server/dist/services/planner.js";
+import type { TransitionPlan } from "spotify-dj-mcp-server/dist/types.js";
 import type { ApprovalWaiter } from "./approvals.js";
 import type { Repo } from "./repo.js";
-import type { ServerEvent } from "./types.js";
+import { InvalidSettingsError, type SettingsStore } from "./settings.js";
+import type { Playlist, ServerEvent, SetVersion, Settings, Status } from "./types.js";
 
 export interface HttpDeps {
   repo: Repo;
   waiter: ApprovalWaiter;
+  status: () => Status;
+  playlists: () => Promise<Playlist[]>;
+  settings: SettingsStore;
   chat: (chatSessionId: string, message: string, emit: (e: ServerEvent) => void, signal: AbortSignal) => Promise<void>;
 }
 
@@ -37,21 +44,51 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
 }
 
 export function createHttpServer(deps: HttpDeps): http.Server {
-  const { repo, waiter, chat } = deps;
+  const { repo, waiter, status, playlists, settings, chat } = deps;
   const busy = new Set<string>(); // sessões com turno de chat em andamento
 
-  const setDetail = (id: string) => {
-    const set = repo.getSet(id);
-    if (!set) return undefined;
-    const latest = repo.latestVersion(id);
-    return { set, versions: repo.listVersions(id), plans: latest ? repo.listPlans(latest.id) : [] };
+  /** Versão com os planos e o guia do Mix (um passo por plano; rótulos do snapshot, sem ele os ids). */
+  const versionDetail = (v: SetVersion) => {
+    const plans = repo.listPlans(v.id);
+    const label = (index: number, fallback: string) => v.snapshot?.order[index]?.label ?? fallback;
+    const guide = plans.map((p) =>
+      mixGuideStep(p.plan as TransitionPlan, `${p.position} → ${p.position + 1}`, label(p.position - 1, p.from_track), label(p.position, p.to_track)));
+    return { ...v, plans, guide };
   };
 
   async function route(req: http.IncomingMessage, res: http.ServerResponse, json: (status: number, body: unknown) => void): Promise<void> {
     const path = new URL(req.url ?? "/", "http://localhost").pathname;
     const method = req.method ?? "GET";
 
-    if (method === "GET" && path === "/api/sessions") return json(200, repo.listSessions());
+    if (method === "GET" && path === "/api/status") return json(200, status());
+
+    if (method === "GET" && path === "/api/playlists") {
+      try {
+        return json(200, { items: await playlists() });
+      } catch (err) {
+        if (err instanceof AuthRequiredError) throw new HttpError(503, "Spotify não conectado. Rode npm run auth -w packages/mcp-server.");
+        console.error("playlists falhou:", err instanceof Error ? err.message : err);
+        throw new HttpError(502, "Spotify indisponível.");
+      }
+    }
+
+    if (path === "/api/settings" && method === "GET") return json(200, settings.get());
+    if (path === "/api/settings" && method === "PUT") {
+      const body = await readJson(req);
+      try {
+        return json(200, settings.set(body as unknown as Settings));
+      } catch (err) {
+        if (err instanceof InvalidSettingsError) throw new HttpError(400, err.message);
+        throw err;
+      }
+    }
+
+    if (method === "GET" && path === "/api/sessions") {
+      return json(200, repo.listSessions().map((s) => {
+        const set = repo.getCurrentSet(s.id);
+        return { ...s, set: set ? { id: set.id, name: set.name, status: set.status, spotify_url: set.spotify_url } : null };
+      }));
+    }
 
     let m = /^\/api\/sessions\/([^/]+)$/.exec(path);
     if (m && method === "GET") {
@@ -59,15 +96,20 @@ export function createHttpServer(deps: HttpDeps): http.Server {
       const session = repo.getSession(id);
       if (!session) throw new HttpError(404, "Sessão não encontrada.");
       const set = repo.getCurrentSet(id);
-      const detail = set ? setDetail(set.id) : undefined;
-      return json(200, { session, set: set ?? null, versions: detail?.versions ?? [], plans: detail?.plans ?? [] });
+      // a approval relida traz o estado de agora: a decisão pode ter vindo depois do turno
+      const turns = repo.listTurns(id).map((t) => ({
+        ...t,
+        events: t.events.map((e) => (e.type === "approval" ? { ...e, status: repo.getApproval(e.approval_id)?.status } : e)),
+      }));
+      return json(200, { session, turns, set: set ?? null, versions: set ? repo.listVersions(set.id).map(versionDetail) : [] });
     }
 
     m = /^\/api\/sets\/([^/]+)$/.exec(path);
     if (m && method === "GET") {
-      const detail = setDetail(decodeURIComponent(m[1] ?? ""));
-      if (!detail) throw new HttpError(404, "Set não encontrado.");
-      return json(200, detail);
+      const id = decodeURIComponent(m[1] ?? "");
+      const set = repo.getSet(id);
+      if (!set) throw new HttpError(404, "Set não encontrado.");
+      return json(200, { set, versions: repo.listVersions(id).map(versionDetail) });
     }
 
     m = /^\/api\/approvals\/([^/]+)$/.exec(path);
@@ -138,17 +180,17 @@ export function createHttpServer(deps: HttpDeps): http.Server {
     const port = req.socket.localPort;
     const host = req.headers.host;
     if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return deny(403, "Host não permitido.");
-    // CSRF: origem de navegador só a do Vite; POST só com JSON (força preflight, que o CORS barra)
+    // CSRF: origem de navegador só a do Vite; POST e PUT só com JSON (força preflight, que o CORS barra)
     const origin = req.headers.origin;
     if (origin && !ORIGINS.has(origin)) return deny(403, "Origem não permitida.");
-    if (req.method === "POST" && !(req.headers["content-type"] ?? "").startsWith("application/json"))
+    if ((req.method === "POST" || req.method === "PUT") && !(req.headers["content-type"] ?? "").startsWith("application/json"))
       return deny(415, "Envie o corpo como application/json.");
     if (origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
     }
     if (req.method === "OPTIONS") {
-      res.writeHead(204, { "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type" });
+      res.writeHead(204, { "Access-Control-Allow-Methods": "GET, POST, PUT", "Access-Control-Allow-Headers": "Content-Type" });
       res.end();
       return;
     }
@@ -159,6 +201,7 @@ export function createHttpServer(deps: HttpDeps): http.Server {
     route(req, res, json).catch((err: unknown) => {
       if (res.headersSent) return void res.end();
       if (err instanceof HttpError) return json(err.status, { error: err.message });
+      console.error("rota falhou:", err instanceof Error ? err.message : err);
       json(500, { error: "Erro interno do servidor." });
     });
   });

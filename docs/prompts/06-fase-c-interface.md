@@ -2,6 +2,8 @@
 
 Sprint 3 da EAP (`docs/eap_play-me_fainow.md`), work packages 5.1, 5.2, 6.1.2, 6.2 e 3.3. Rode depois do prompt 05 aceito.
 
+Status: entregue em 30/09/2026 (ADR 0007). Fluxo ponta a ponta verificado no navegador; pendências P10 a P12 em `docs/decisoes.md`.
+
 ```
 Use o /feature-builder.
 

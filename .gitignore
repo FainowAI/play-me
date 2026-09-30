@@ -36,3 +36,6 @@ Thumbs.db
 *.aif
 *.ogg
 *.opus
+
+# memória de trabalho do feature-builder (efêmera)
+.claude/.work/

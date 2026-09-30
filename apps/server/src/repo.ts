@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import type { Approval, ChatSession, PlanInput, PlanRow, SetRow, SetStatus, SetVersion } from "./types.js";
+import type { Approval, ChatSession, PlanInput, PlanRow, ServerEvent, SetRow, SetSnapshot, SetStatus, SetVersion, Turn } from "./types.js";
 
 export class InvalidTransitionError extends Error {
   constructor(from: SetStatus, to: SetStatus) {
@@ -28,9 +28,10 @@ export interface Repo {
    * - set em rascunho → nova versão (N+1) no mesmo set;
    * - set aguardando aprovação → volta para rascunho e ganha nova versão;
    * - set enviado → cria set NOVO (mesmo nome e curva) em rascunho, versão 1. O enviado nunca muda.
-   * Se a ordem for igual à da última versão do set em rascunho, não cria versão nova: devolve a última.
+   * Se a ordem for igual à da última versão do set em rascunho, não cria versão nova: devolve a última
+   * (e grava nela o snapshot, quando ela não tinha e veio um).
    */
-  recordProposal(chatSessionId: string, name: string, curve: string, order: string[], note: string | null): { set: SetRow; version: SetVersion };
+  recordProposal(chatSessionId: string, name: string, curve: string, order: string[], note: string | null, snapshot: SetSnapshot | null): { set: SetRow; version: SetVersion };
   listVersions(setId: string): SetVersion[]; // versão 1 primeiro
   latestVersion(setId: string): SetVersion | undefined;
   savePlans(versionId: string, plans: PlanInput[]): void; // substitui os planos da versão
@@ -42,6 +43,10 @@ export interface Repo {
   getApproval(id: string): Approval | undefined;
   /** Só decide approval pendente; lança Error se já decidida ou inexistente. */
   decideApproval(id: string, decision: "approved" | "rejected"): Approval;
+
+  /** Grava um turno do chat: a mensagem do usuário e os eventos emitidos (sem session e done). */
+  addTurn(chatSessionId: string, userMessage: string, events: ServerEvent[], costUsd: number | null): Turn;
+  listTurns(chatSessionId: string): Turn[]; // mais antigo primeiro
 
   close(): void;
 }
@@ -105,6 +110,19 @@ CREATE TABLE approvals (
 );
 `;
 
+// v2 (Sprint 3): snapshot do set por versão e turnos do chat gravados.
+const V2 = `
+ALTER TABLE set_versions ADD COLUMN snapshot_json TEXT;
+CREATE TABLE turns (
+  id TEXT PRIMARY KEY,
+  chat_session_id TEXT NOT NULL REFERENCES chat_sessions(id),
+  user_message TEXT NOT NULL,
+  events_json TEXT NOT NULL,
+  cost_usd REAL,
+  created_at TEXT NOT NULL
+);
+`;
+
 const ALLOWED: Record<SetStatus, SetStatus[]> = {
   rascunho: ["aguardando_aprovacao"],
   aguardando_aprovacao: ["enviado", "rascunho"],
@@ -119,6 +137,10 @@ const now = () => new Date().toISOString();
 const raw = <T>(r: Row) => r as T;
 const toVersion = (r: Row): SetVersion => ({
   id: r.id, set_id: r.set_id, version: r.version, order: JSON.parse(r.order_json), note: r.note, created_at: r.created_at,
+  snapshot: r.snapshot_json ? JSON.parse(r.snapshot_json) : null,
+});
+const toTurn = (r: Row): Turn => ({
+  id: r.id, user_message: r.user_message, events: JSON.parse(r.events_json), cost_usd: r.cost_usd, created_at: r.created_at,
 });
 const toApproval = (r: Row): Approval => ({
   id: r.id, chat_session_id: r.chat_session_id, set_id: r.set_id, action: r.action,
@@ -134,7 +156,8 @@ export function openRepo(dbPath: string): Repo {
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA foreign_keys = ON");
   const version = (db.prepare("PRAGMA user_version").get() as Row).user_version;
-  if (version === 0) db.exec(`BEGIN; ${SCHEMA} PRAGMA user_version = 1; COMMIT;`);
+  if (version === 0) db.exec(`BEGIN; ${SCHEMA} ${V2} PRAGMA user_version = 2; COMMIT;`);
+  else if (version === 1) db.exec(`BEGIN; ${V2} PRAGMA user_version = 2; COMMIT;`);
 
   const one = <T>(sql: string, map: (r: Row) => T, ...args: string[]): T | undefined => {
     const r = db.prepare(sql).get(...args) as Row | undefined;
@@ -166,10 +189,10 @@ export function openRepo(dbPath: string): Repo {
   const getCurrentSet = (chatSessionId: string) =>
     one("SELECT * FROM sets WHERE chat_session_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1", raw<SetRow>, chatSessionId);
 
-  function addVersion(setId: string, n: number, order: string[], note: string | null): SetVersion {
-    const v: SetVersion = { id: randomUUID(), set_id: setId, version: n, order, note, created_at: now() };
-    db.prepare("INSERT INTO set_versions (id, set_id, version, order_json, note, created_at) VALUES (?,?,?,?,?,?)")
-      .run(v.id, setId, n, JSON.stringify(order), note, v.created_at);
+  function addVersion(setId: string, n: number, order: string[], note: string | null, snapshot: SetSnapshot | null): SetVersion {
+    const v: SetVersion = { id: randomUUID(), set_id: setId, version: n, order, note, created_at: now(), snapshot };
+    db.prepare("INSERT INTO set_versions (id, set_id, version, order_json, note, created_at, snapshot_json) VALUES (?,?,?,?,?,?,?)")
+      .run(v.id, setId, n, JSON.stringify(order), note, v.created_at, snapshot ? JSON.stringify(snapshot) : null);
     return v;
   }
   function addSet(chatSessionId: string, name: string, curve: string): SetRow {
@@ -199,20 +222,24 @@ export function openRepo(dbPath: string): Repo {
 
     getSet,
     getCurrentSet,
-    recordProposal(chatSessionId, name, curve, order, note) {
+    recordProposal(chatSessionId, name, curve, order, note, snapshot) {
       return tx(() => {
         let set = getCurrentSet(chatSessionId);
         let out: { set: SetRow; version: SetVersion };
         if (!set || set.status === "enviado") {
           set = addSet(chatSessionId, name, curve);
-          out = { set, version: addVersion(set.id, 1, order, note) };
+          out = { set, version: addVersion(set.id, 1, order, note, snapshot) };
         } else {
           const last = latestVersion(set.id);
           if (set.status === "rascunho" && last && JSON.stringify(last.order) === JSON.stringify(order)) {
+            if (snapshot && !last.snapshot) {
+              db.prepare("UPDATE set_versions SET snapshot_json = ? WHERE id = ?").run(JSON.stringify(snapshot), last.id);
+              last.snapshot = snapshot;
+            }
             out = { set, version: last };
           } else {
             db.prepare("UPDATE sets SET status = 'rascunho', updated_at = ? WHERE id = ?").run(now(), set.id);
-            out = { set: getSet(set.id)!, version: addVersion(set.id, (last?.version ?? 0) + 1, order, note) };
+            out = { set: getSet(set.id)!, version: addVersion(set.id, (last?.version ?? 0) + 1, order, note, snapshot) };
           }
         }
         touch(chatSessionId);
@@ -258,6 +285,14 @@ export function openRepo(dbPath: string): Repo {
       db.prepare("UPDATE approvals SET status = ?, decided_at = ? WHERE id = ?").run(decision, now(), aid);
       return getApproval(aid)!;
     },
+
+    addTurn(chatSessionId, userMessage, events, costUsd) {
+      const t: Turn = { id: randomUUID(), user_message: userMessage, events, cost_usd: costUsd, created_at: now() };
+      db.prepare("INSERT INTO turns (id, chat_session_id, user_message, events_json, cost_usd, created_at) VALUES (?,?,?,?,?,?)")
+        .run(t.id, chatSessionId, userMessage, JSON.stringify(events), costUsd, t.created_at);
+      return t;
+    },
+    listTurns: (chatSessionId) => all("SELECT * FROM turns WHERE chat_session_id = ? ORDER BY created_at, rowid", toTurn, chatSessionId),
 
     close: () => db.close(),
   };

@@ -1,0 +1,750 @@
+/* Painel do set e camadas (src/panel). Cor, raio, espaço e tipo vêm só de design/playme-tokens.css (DESIGN.md §9.1);
+   as medidas seguem design/telas/{SetPanel,Transicao,Faixa,Configuracoes}.dc.html. Prefixo pn-. */
+
+/* ---------- SetPanel: aside de 400 px, altura total, corpo rolável ---------- */
+.pn-panel {
+  flex: 1 1 auto;
+  width: var(--width-setpanel);
+  max-width: 100%;
+  height: 100%;
+  max-height: 100dvh; /* na gaveta o overlay__body só tem min-height: sem este teto a gaveta inteira rolaria, em vez do corpo */
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-raised);
+  border-left: 1px solid var(--line);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+.overlay .pn-panel {
+  border-left: 0; /* na gaveta a borda é do próprio <dialog> (shell.css) */
+}
+.pn-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 20px 20px 0;
+}
+.pn-head__top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.pn-head__set {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-subtle);
+}
+.pn-title {
+  margin: 0;
+  text-wrap: balance;
+}
+.pn-meta {
+  font: 500 12px/16px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-subtle);
+}
+
+/* seletor de versão: <select> com a cara do chip mono do cabeçalho (SetProposto) */
+.pn-ver {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.pn-ver::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-right: 1.5px solid var(--ink-subtle);
+  border-bottom: 1.5px solid var(--ink-subtle);
+  transform: translateY(-75%) rotate(45deg);
+  pointer-events: none;
+}
+.pn-ver select {
+  appearance: none;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  color: var(--ink-muted);
+  font: 500 11px/16px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
+  text-transform: none;
+  padding: 2px 20px 2px 6px;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+.pn-ver select:hover {
+  color: var(--ink);
+}
+.pn-ver option {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+/* abas */
+.pn-tabs {
+  display: flex;
+  gap: 20px;
+  margin-top: var(--space-1);
+  border-bottom: 1px solid var(--line);
+}
+.pn-tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin: 0 0 -1px;
+  padding: 10px 0;
+  font: 500 14px/20px var(--font-sans);
+  color: var(--ink-subtle);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+.pn-tab:hover {
+  color: var(--ink-muted);
+}
+.pn-tab[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+/* corpo */
+.pn-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) 20px var(--space-3);
+}
+.pn-body > * {
+  flex-shrink: 0;
+}
+.pn-lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-muted);
+}
+.pn-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -8px;
+}
+.pn-sec {
+  padding: var(--space-3) var(--space-2) var(--space-1);
+  color: var(--ink-subtle);
+}
+/* TrackRow a 352 px úteis: com a tag "A validar" (quase todo tom vem da web) a coluna do título encolhe a zero e as colunas
+   de BPM, tom e energia saem do alinhamento. Aqui todas as linhas usam as mesmas colunas e a tag desce para a segunda
+   linha, sob BPM, tom e energia: a altura não muda (24 + 22 + 16). Só reposiciona; o componente segue o do DS. */
+.pn-rows .pm-row {
+  grid-template-columns: 28px minmax(0, 1fr) 52px 40px 96px;
+}
+.pn-rows .pm-row--pending {
+  row-gap: 0;
+}
+.pn-rows .pm-row--pending .pm-row__main {
+  display: contents;
+}
+.pn-rows .pm-row--pending .pm-row__idx {
+  grid-row: 1 / span 2;
+}
+.pn-rows .pm-row--pending .pm-row__title {
+  grid-area: 1 / 2;
+}
+.pn-rows .pm-row--pending .pm-row__artist {
+  grid-area: 2 / 2;
+}
+.pn-rows .pm-row--pending .pm-row__bpm {
+  grid-area: 1 / 3;
+}
+.pn-rows .pm-row--pending .pm-key {
+  grid-area: 1 / 4;
+}
+.pn-rows .pm-row--pending .pm-energy,
+.pn-rows .pm-row--pending .pm-row__na {
+  grid-area: 1 / 5;
+}
+.pn-rows .pm-row--pending .pm-tag {
+  grid-area: 2 / 3 / auto / -1;
+  justify-self: end;
+}
+.pn-cards,
+.pn-guide {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.pn-cards .pm-trans {
+  max-width: 100%;
+}
+/* a 326 px úteis o par A/B em três colunas corta os títulos em "Nothi…": empilha, como o próprio DS faz em tela estreita */
+.pn-cards .pm-trans__pair {
+  grid-template-columns: minmax(0, 1fr);
+}
+.pn-cards .pm-trans__arrow {
+  transform: rotate(90deg);
+  justify-self: center;
+}
+.pn-ids {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-subtle);
+}
+
+/* guia do Mix: um card por passagem */
+.pn-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+}
+.pn-step__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.pn-step__pos {
+  min-width: 36px;
+  font: 500 12px/16px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-subtle);
+}
+.pn-step__pair {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pn-step__mix {
+  font: 500 12px/16px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+.pn-step__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-muted);
+}
+
+/* rodapé: faixas fora do set; o resumo abre a lista com as razões (details nativo) */
+.pn-foot {
+  flex: none;
+  margin-top: var(--space-3);
+  padding: var(--space-3) 20px var(--space-4);
+  border-top: 1px solid var(--line);
+}
+.pn-foot__none {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-subtle);
+}
+.pn-pend > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+.pn-pend > summary::-webkit-details-marker {
+  display: none;
+}
+.pn-pend > summary .pm-btn {
+  flex: none;
+}
+.pn-pend > summary:hover .pm-btn {
+  background: var(--surface-overlay);
+  color: var(--ink);
+}
+.pn-pend__names {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-subtle);
+}
+.pn-pend__list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pn-pend__list li {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  line-height: 20px;
+}
+.pn-pend__title {
+  font-weight: 500;
+}
+.pn-pend__why {
+  color: var(--ink-muted);
+}
+
+/* ---------- gavetas e janela: Transição (820), Faixa (520), Configurações (760) ----------
+   A shell (Overlay) traz o <dialog>, o scrim, o padding e o gap do miolo; a peça devolve só os blocos, em sequência. */
+.pn-win__head {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.pn-win__head--center {
+  align-items: center;
+}
+.pn-win__titles {
+  flex: 1 1 240px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pn-win__titles .label {
+  color: var(--ink-subtle);
+}
+.pn-h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.pn-win__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.pn-win__error {
+  margin-right: auto;
+}
+.pn-grow {
+  flex-grow: 1;
+}
+.pn-dash {
+  color: var(--ink-subtle);
+}
+.pn-unit {
+  font-size: 16px;
+  color: var(--ink-subtle);
+}
+
+/* Transição: decks A e B, grade de 5 números, bloco tracejado, guia + roda */
+.pn-decks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.pn-deck {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+}
+.pn-deck__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pn-deck__title {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.pn-deck__artist {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.pn-deck__data {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.pn-deck__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pn-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.pn-stats > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pn-stats dt {
+  color: var(--ink-subtle);
+}
+.pn-stats dd {
+  margin: 0;
+  font: 500 14px/20px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.pn-dashed {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--line-strong);
+}
+.pn-dashed--tight {
+  padding: 14px var(--space-4);
+}
+.pn-dashed__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pn-dashed__text .label {
+  color: var(--ink-subtle);
+}
+.pn-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 176px;
+  gap: 20px;
+  align-items: start;
+}
+.pn-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.pn-guide-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+}
+.pn-guide-card .label {
+  color: var(--ink-subtle);
+}
+.pn-guide-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+}
+.pn-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.pn-rating {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.pn-rating > .label {
+  margin-right: var(--space-1);
+  color: var(--ink-subtle);
+}
+.pm-btn.pn-mono {
+  font-family: var(--font-mono); /* nota 1–5 é número musical: sempre mono */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Faixa: número em foco, linhas de fonte, roda + compatíveis, correção manual */
+.pn-figure {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+}
+.pn-src {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.pn-src > div {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 20px;
+}
+.pn-src dt {
+  width: 96px;
+  flex: none;
+  color: var(--ink-subtle);
+}
+.pn-src dd {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.pn-src__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pn-src dd > :not(.pn-src__text),
+.pn-dashed > .pm-btn,
+.pn-conn > :not(.pn-conn__text) {
+  flex: none; /* tag e botão mantêm a largura do conteúdo: sem isso o rótulo quebra em duas linhas */
+}
+.pn-keys {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.pn-keys__side {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pn-keys__side .label {
+  color: var(--ink-subtle);
+}
+.pn-badges {
+  display: flex;
+  gap: 6px;
+}
+.pn-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+.pn-form > .label {
+  color: var(--ink-subtle);
+}
+.pn-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+.pn-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-subtle);
+}
+.pn-input {
+  width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-overlay);
+  color: var(--ink);
+  font: 500 14px/20px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.pn-input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.pn-error {
+  color: var(--danger);
+}
+.pn-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Configurações: conexões, tema, pesos */
+.pn-block {
+  display: flex;
+  flex-direction: column;
+}
+.pn-block > .label {
+  padding-bottom: var(--space-1);
+  color: var(--ink-subtle);
+}
+.pn-conns {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pn-conn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 52px;
+  border-bottom: 1px solid var(--line);
+}
+.pn-conn__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pn-conn__name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.pn-conn__detail {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-muted);
+}
+.pn-conn__model {
+  font: 500 12px/16px var(--font-mono);
+  color: var(--ink-muted);
+}
+.pn-prefs {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-6);
+}
+.pn-pref {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pn-pref > .label {
+  color: var(--ink-subtle);
+}
+.pn-seg {
+  display: flex;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-overlay);
+  border: 1px solid var(--line);
+}
+.pn-seg button {
+  flex: 1 1 0;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 13px/20px var(--font-sans);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+.pn-seg button:not([aria-checked="true"]):hover {
+  color: var(--ink);
+}
+.pn-seg button[aria-checked="true"] {
+  background: var(--ink);
+  color: var(--ink-inverse);
+}
+.pn-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-subtle);
+}
+.pn-weight {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-muted);
+}
+.pn-weight input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--ink-muted);
+}
+.pn-weight__value,
+.pn-total {
+  font: 500 13px/20px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  text-align: right;
+}
+
+/* telas estreitas (390 px): nada rola na horizontal, tudo empilha */
+@media (max-width: 640px) {
+  .pn-decks,
+  .pn-lower,
+  .pn-prefs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pn-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .pn-weight {
+    grid-template-columns: 96px minmax(0, 1fr) 40px;
+  }
+  .pn-dashed {
+    flex-wrap: wrap;
+  }
+}
