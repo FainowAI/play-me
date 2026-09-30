@@ -11,7 +11,7 @@ Uso pessoal, single-user, roda na máquina do usuário (Windows + WSL2). Pasta l
 ```
 1. Usuário pede no chat: "monta um set da Eletro, warm up até peak time"
 2. Spotify API  → lê a playlist (IDs, ISRC, nomes)
-3. Metadados    → BPM e tom: Mixar salvo > GetSongBPM + Deezer (cruzados); divergência vira [A VALIDAR]
+3. Metadados    → BPM e tom: Mixar salvo > ReccoBeats (por ID) > GetSongBPM (reserva); tom da web e divergência viram [A VALIDAR]
 4. Casamento    → (opcional, só com arquivo) cada faixa ↔ arquivo local (ISRC, fingerprint, fuzzy)
 5. Beat This!   → (opcional, só com arquivo) grade: beats, downbeats, compassos
 6. Extratores   → (opcional, só com arquivo) tom, energia por banda, vocal, seções, frases, cues
@@ -109,7 +109,7 @@ Play.me/
 | Matching | mutagen (tags/ISRC), Chromaprint `fpcalc` + AcoustID, fuzzy título/artista/duração |
 | Render | pedalboard (GPLv3) + Rubber Band para time-stretch |
 | Export | pyrekordbox ou ElementTree para Rekordbox XML |
-| Metadados (MVP) | GetSongBPM (BPM, tom) + Deezer (BPM por ISRC), cruzados com o Mixar; cache em `~/.spotify-dj-mcp/metadata-cache.json` |
+| Metadados (MVP) | ReccoBeats (BPM e tom pelo ID do Spotify, em lote) + GetSongBPM (reserva), com o Mixar como verdade (ADR 0004); cache em `~/.spotify-dj-mcp/metadata-cache.json` |
 | Design da UI | Canvas do Claude → `design/telas/` + DESIGN.md → Claude Code |
 | UI | React, Vite, TypeScript, Tailwind; chat com streaming (SSE); canvas próprio para forma de onda em 3 bandas |
 
@@ -297,7 +297,7 @@ Manter as 11 atuais. Adicionar (as de metadados chamam as APIs direto; as demais
 
 | Ferramenta | Função |
 |---|---|
-| `metadata_lookup` | (Fase M) Busca BPM e tom no GetSongBPM e no Deezer, mostra o que cada fonte trouxe e o que seria salvo; só grava com `dry_run=false` |
+| `metadata_lookup` | (Fase M) Busca BPM e tom na ReccoBeats e, para o que faltar, no GetSongBPM; mostra o que cada fonte trouxe e o que seria salvo; só grava com `dry_run=false` |
 | `metadata_coverage` | (Fase M) Cobertura de uma playlist por origem: Mixar, web, [A VALIDAR], pendente |
 | `library_match_status` | Quantas faixas de uma playlist têm arquivo local casado e análise pronta |
 | `library_match_confirm` | Confirma ou corrige um casamento Spotify ↔ arquivo |
@@ -326,7 +326,7 @@ O MCP nunca roda análise pesada dentro do processo stdio.
 
 Cada fase fecha com critério de aceite verificável. Não pular.
 
-- **Fase M — Metadados (agora).** BPM e tom de todas as faixas por GetSongBPM + Deezer, cruzados com o Mixar (`metadata_lookup`, `metadata_coverage`). Critério: BPM confere com o Mixar em ≥ 90 % das faixas encontradas; acerto de tom e cobertura registrados no ADR 0002.
+- **Fase M — Metadados (agora).** BPM e tom de todas as faixas pela ReccoBeats, com GetSongBPM de reserva e o Mixar como verdade (`metadata_lookup`, `metadata_coverage`; ADR 0004). Validado: BPM confere em 11 de 11; 43 de 50 faixas cobertas. Tom da web fica [A VALIDAR]. Falta gravar a playlist (`dry_run=false`) depois de revisar.
 - **Fase P — Planejador por metadados.** `TransitionPlan` sem estrutura: tipo e comprimento por BPM, tom e energia, mais o guia do Mix.
 - **Fase C — Chat.** `apps/server` com Agent SDK e `apps/web` com as telas da D21.
 - **Fase K — Calibração.** Ajustar regras e pesos com as notas de `transition_feedback`.

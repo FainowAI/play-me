@@ -29,6 +29,7 @@ Toda decisão nova entra aqui e no quadro do projeto: https://claude.ai/artifact
 | D21 | 28/09/2026 | Telas do MVP aprovadas (`design/telas-mvp.md`): chat único com painel do set versionado; Início, Conversa, Analisando, Set proposto, Aprovação, Enviado + guia do Mix, Transição expandida, Faixa, Configurações. | Fluxo simples e maleável como Claude e ChatGPT. |
 | D22 | 28/09/2026 | MVP por metadados; análise de áudio vira trilha opcional (ADR 0002). | Comprar 527 faixas é inviável. |
 | D23 | 29/09/2026 | Telas no canvas "Play.Me · Telas do MVP" (cópia em `design/telas/`), no lugar do Google Stitch; revisa a D09 (ADR 0003). | Decisão do usuário; o canvas já usa os componentes do design system. |
+| D24 | 29/09/2026 | ReccoBeats é a fonte principal de BPM e tom (por ID do Spotify, em lote); GetSongBPM vira reserva; Deezer sai. BPM da ReccoBeats é conferido; tom da web é sempre [A VALIDAR]; Mixar segue como verdade (ADR 0004). | Teste: BPM confere com o Mixar em 11 de 11 e cobre 43 de 50 faixas; o tom divergiu em 8 de 11. Spotify `audio-features` dá 403 para o app. |
 
 ## Pendentes
 
@@ -42,5 +43,7 @@ Toda decisão nova entra aqui e no quadro do projeto: https://claude.ai/artifact
 
 ## Próximo passo (29/09/2026)
 
-1. Decidir o P03 com os resultados da Fase M (ADR 0002, seção Resultados): a web cobriu 1 de 50 faixas da Eletro, e o Deezer não traz BPM neste catálogo.
+1. Revisar o dry run da Eletro e gravar com `metadata_lookup dry_run=false` (ReccoBeats, D24).
+2. Conferir no Mixar o tom das faixas que entram no set (tom da web é [A VALIDAR]).
+3. Fechar o P03 com esse escopo e seguir para a Fase P.
 2. Fase P: planejador por metadados.

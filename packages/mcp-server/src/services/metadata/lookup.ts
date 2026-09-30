@@ -1,17 +1,17 @@
 /**
- * Orquestra a Fase M: para cada faixa consulta GetSongBPM e Deezer (com cache),
- * decide pelo merge e, só quando dry_run = false, grava no store.
+ * Orquestra a Fase M: ReccoBeats em lote (principal) e GetSongBPM só para as faixas que ela
+ * não cobre (reserva), com cache; decide pelo merge e, só quando dry_run = false, grava no store.
  */
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SpotifyTrackSummary, TrackAnalysis } from "../../types.js";
 import type { AnalysisStore } from "../analysis-store.js";
-import type { DeezerResult } from "./deezer.js";
 import { RateLimitError, type GetSongBpmResult } from "./getsongbpm.js";
 import { mergeMetadata, type MergeOutcome } from "./merge.js";
+import type { ReccoBeatsResult } from "./reccobeats.js";
 
-type Provider = "getsongbpm" | "deezer";
-type CacheValue = GetSongBpmResult | DeezerResult | null; // null = a fonte não achou a faixa
+type Provider = "getsongbpm" | "reccobeats";
+type CacheValue = GetSongBpmResult | ReccoBeatsResult | null; // null = a fonte não achou a faixa
 
 /**
  * Cache em metadata-cache.json, chave "<spotify_id>:<provedor>". Guarda só números,
@@ -51,15 +51,15 @@ export interface LookupDeps {
   store: AnalysisStore;
   cache: MetadataCache;
   getsongbpm: ((title: string, artists: string[]) => Promise<GetSongBpmResult | null>) | null; // null = sem chave
-  deezer: (isrc: string) => Promise<DeezerResult | null>;
+  reccobeats: (trackIds: string[]) => Promise<Map<string, ReccoBeatsResult>>;
 }
 
 export interface LookupRow {
   track_id: string;
   label: string;
   existing: Pick<TrackAnalysis, "bpm" | "camelot" | "source" | "notes"> | null;
-  getsongbpm: GetSongBpmResult | null;
-  deezer: DeezerResult | null;
+  reccobeats: ReccoBeatsResult | null;
+  getsongbpm: GetSongBpmResult | null; // só consultado quando a ReccoBeats não tem BPM e tom
   outcome: MergeOutcome;
 }
 
@@ -85,14 +85,26 @@ async function cached<T extends CacheValue>(
 export async function lookupTracks(tracks: SpotifyTrackSummary[], dryRun: boolean, deps: LookupDeps): Promise<LookupReport> {
   const rows: LookupRow[] = [];
   let stopped: string | null = null;
+
+  const missing = tracks.flatMap((t) => (t.id && !deps.cache.has(t.id, "reccobeats") ? [t.id] : []));
+  try {
+    const found = missing.length ? await deps.reccobeats(missing) : new Map<string, ReccoBeatsResult>();
+    for (const id of missing) deps.cache.set(id, "reccobeats", found.get(id) ?? null);
+  } catch (error) {
+    if (!(error instanceof RateLimitError)) throw error;
+    return { dry_run: dryRun, rows, saved: 0, stopped: error.message };
+  }
+
   for (const track of tracks) {
     if (!track.id) continue;
     const id = track.id;
     try {
-      const gsb = deps.getsongbpm
-        ? await cached(deps.cache, id, "getsongbpm", () => deps.getsongbpm!(track.name, track.artists))
-        : null;
-      const dz = track.isrc ? await cached(deps.cache, id, "deezer", () => deps.deezer(track.isrc!)) : null;
+      const recco = deps.cache.get<ReccoBeatsResult | null>(id, "reccobeats") ?? null;
+      const needGsb = !recco?.bpm || !recco.camelot;
+      const gsb =
+        needGsb && deps.getsongbpm
+          ? await cached(deps.cache, id, "getsongbpm", () => deps.getsongbpm!(track.name, track.artists))
+          : null;
       const existing = deps.store.get(id);
       rows.push({
         track_id: id,
@@ -100,9 +112,9 @@ export async function lookupTracks(tracks: SpotifyTrackSummary[], dryRun: boolea
         existing: existing
           ? { bpm: existing.bpm, camelot: existing.camelot, source: existing.source, notes: existing.notes }
           : null,
+        reccobeats: recco,
         getsongbpm: gsb,
-        deezer: dz,
-        outcome: mergeMetadata(id, existing, gsb, dz),
+        outcome: mergeMetadata(id, existing, recco, gsb),
       });
     } catch (error) {
       if (error instanceof RateLimitError) {

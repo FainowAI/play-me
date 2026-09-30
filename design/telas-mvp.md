@@ -15,13 +15,13 @@ Sidebar (264 px) · chat (coluna de 720 px) · painel do set (400 px, só quando
 | # | Tela | Tipo | Componentes | O que mostra |
 |---|---|---|---|---|
 | 1 | Início | tela | AgentOrb 64 (idle), Composer, Button | "Pista cheia.", composer com a playlist em contexto, 3 pedidos prontos, aviso do Jev sem acesso |
-| 2 | Conversa · buscando BPM e tom | estado do chat | ThinkingStatus, ToolCall, StatusTag | Orb "Buscando BPM e tom · GetSongBPM + Deezer", `metadata_lookup` rodando em dry run, cobertura (Mixar, web conferido, A validar, pendentes) |
+| 2 | Conversa · buscando BPM e tom | estado do chat | ThinkingStatus, ToolCall, StatusTag | Orb "Buscando BPM e tom · ReccoBeats + GetSongBPM", `metadata_lookup` rodando em dry run, cobertura (Mixar, web conferido, A validar, pendentes) |
 | 3 | Set proposto + painel | estado do chat + painel | TransitionCard, ToolCall, SetPanel (SetArc, TrackRow) | Resultado primeiro, a passagem mais arriscada em card, atalhos de ajuste; painel com a curva de energia e a ordem por seção |
 | 4 | Aprovação | estado do chat | ApprovalGate, ToolCall (aguardando) | Gate "Criar [DJ MIX] Eletro", painel em "Aguardando aprovação" |
 | 5 | Enviado + guia do Mix | estado do chat + painel | ToolCall, Button, SetPanel (aba Guia do Mix) | Playlist criada, original intacta, guia passagem por passagem |
 | 6 | Transição expandida | janela lateral (820 px) | PhraseBar, KeyBadge, EnergyMeter, StatusTag, CamelotWheel | A e B com BPM, tom e energia; tipo, duração, harmonia, ΔBPM e ΔEnergia; guia do Mix; alertas por metadados; nota 1–5; trocar B. Estrutura por compasso só na trilha de áudio (opcional); prévia pós-MVP |
-| 7 | Faixa | gaveta (520 px) | KeyBadge lg, EnergyMeter, CamelotWheel, StatusTag | BPM, tom e energia com a fonte de cada dado (Mixar, GetSongBPM, Deezer, estimativa); arquivo opcional; tons compatíveis; correção manual |
-| 8 | Configurações | janela | StatusTag, Button | Conexões (Spotify, GetSongBPM, Deezer, trilha de áudio opcional, Jev, API da Anthropic), tema, pesos da nota do par |
+| 7 | Faixa | gaveta (520 px) | KeyBadge lg, EnergyMeter, CamelotWheel, StatusTag | BPM, tom e energia com a fonte de cada dado (Mixar, ReccoBeats, GetSongBPM, estimativa); arquivo opcional; tons compatíveis; correção manual |
+| 8 | Configurações | janela | StatusTag, Button | Conexões (Spotify, ReccoBeats, GetSongBPM, trilha de áudio opcional, Jev, API da Anthropic), tema, pesos da nota do par |
 
 Peças reutilizadas: `Sidebar` e `SetPanel` (abas Ordem · Transições · Guia do Mix; estados rascunho, aguardando aprovação, enviado).
 

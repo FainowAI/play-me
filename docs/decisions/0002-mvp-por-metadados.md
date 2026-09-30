@@ -1,6 +1,6 @@
 # 0002 — MVP por metadados
 
-Data: 28/09/2026 · Decisão D22 · Suspende a Fase 0 (prompt 02)
+Data: 28/09/2026 · Decisão D22 · Suspende a Fase 0 (prompt 02) · Fontes revistas no ADR 0004 (D24: ReccoBeats no lugar do Deezer)
 
 ## Contexto
 
