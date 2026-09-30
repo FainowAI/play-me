@@ -48,6 +48,7 @@ EAP e roadmap: `docs/eap_play-me_fainow.md` (29/09/2026).
 
 ## Próximo passo (29/09/2026)
 
-1. Prompt 04 (`docs/prompts/04-fase-p-planejador.md`): Sprint 0 e 1, Fase P. Ter à mão a lista de presets do Mix do app do Spotify.
-2. Prompt 05 (Sprint 2): servidor local. Prompt 06 (Sprint 3): interface.
-3. Sprint 4 (Fase K) com o `feature-builder`, depois da Sprint 3.
+1. Sprint 0 (29/09): GetSongBPM removido e aviso de tom a confirmar no Mixar entregues (commit c253b60). Falta o catálogo de presets do Mix (2.2.1): depende da lista que o usuário lê no app do Spotify.
+2. Sprint 1: Parte B do prompt 04 (`docs/prompts/04-fase-p-planejador.md`), Fase P.
+3. Prompt 05 (Sprint 2): servidor local. Prompt 06 (Sprint 3): interface.
+4. Sprint 4 (Fase K) com o `feature-builder`, depois da Sprint 3.

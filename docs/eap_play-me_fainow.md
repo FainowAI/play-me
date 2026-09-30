@@ -46,10 +46,10 @@ Legenda: ✅ feito · ⬜ a fazer.
       1.1.3 ✅ Ferramentas metadata_lookup e metadata_coverage
       1.1.4 ✅ Gravar a Eletro no store (436/557)
     1.2 Fonte única de metadados
-      1.2.1 ⬜ Remover o cliente GetSongBPM, a chave e o fallback (D29)
-      1.2.2 ⬜ Ajustar testes, textos das ferramentas e docs
+      1.2.1 ✅ Remover o cliente GetSongBPM, a chave e o fallback (D29)
+      1.2.2 ✅ Ajustar testes, textos das ferramentas e docs
     1.3 Tom a validar visível
-      1.3.1 ⬜ Aviso nas saídas de set: faixas com tom [A VALIDAR]
+      1.3.1 ✅ Aviso nas saídas de set: faixas com tom [A VALIDAR]
   2. Planejador de transições (Fase P)
     2.1 TransitionPlan por metadados
       2.1.1 ⬜ Regras puras em planner.ts (tipo, comprimento, tempo, harmonia, alertas) + testes
