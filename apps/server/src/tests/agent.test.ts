@@ -122,6 +122,7 @@ const input = { track_ids: ["t1", "spotify:track:t2", "https://open.spotify.com/
   const { ctx } = setup();
   assert.equal((await gate(ctx, "mcp__spotify-dj__dj_build_set", {})).behavior, "allow");
   assert.equal((await gate(ctx, "mcp__spotify-dj__spotify_get_playlist_tracks", {})).behavior, "allow");
+  assert.equal((await gate(ctx, "mcp__spotify-dj__dj_delete_track_analysis", {})).behavior, "deny");
   for (const name of ["Bash", "Read", "WebFetch", "mcp__outro__x"]) {
     const r = await gate(ctx, name, {});
     assert.deepEqual(r, { behavior: "deny", message: "Ferramenta não disponível no Play.Me." });

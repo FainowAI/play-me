@@ -95,5 +95,7 @@ export function parseCorrection(input: { bpm: string; key: string; energy: strin
 /** Mensagem do "Salvar correção" (contract.md, tela 7). Campo omitido preserva o valor salvo no MCP, então energia vazia sai da frase. */
 export function correctionMessage(title: string, trackId: string, c: Correction): string {
   const parts = [`BPM ${c.bpm}`, `tom ${c.key}`, ...(c.energy === null ? [] : [`energia ${c.energy}`])];
-  return `Corrige a faixa ${title} (${trackId}): ${parts.join(", ")}. Grave com fonte manual.`;
+  // ponytail: sem o título na frase (texto do Spotify não vira mensagem com papel de usuário); o id basta para a ferramenta
+  void title;
+  return `Corrige a faixa de id ${trackId}: ${parts.join(", ")}. Grave com fonte manual.`;
 }

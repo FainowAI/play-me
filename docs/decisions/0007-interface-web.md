@@ -32,6 +32,7 @@ Verificação em 30/09/2026 (Chrome real em 1440 px; Playwright em 1000, 600 e 3
 | Camadas e tema | Transição, Faixa e Configurações iguais ao canvas; Dia troca todas as superfícies |
 | Responsivo | 1000 px: painel em gaveta; 600 e 390 px: sidebar em gaveta, nenhum elemento além da viewport, composer visível, 0 erros no console |
 | Achado real | O Haiku mandou ao gate 23 IDs inventados; a rejeição segurou e a D36 passa a recusar antes do clique |
+| Auditoria de segurança | 0 crítico · 0 alto · 2 médios · 7 baixos. Corrigidos no commit seguinte: o Vite dev servia `data/*.sqlite` e logs em `/@fs` a qualquer origem localhost (`fs.allow`); texto de faixa/playlist do Spotify entrava em mensagem com papel de usuário e o gate liberava `dj_delete_track_analysis` (mensagens só com id/posição, nome de playlist saneado, ferramenta negada); cabeçalhos anti-clickjacking; abort depois da aprovação não cancela a criação; caminhos redigidos nos erros; id de rota malformado → 400; link só para open.spotify.com. Aceitos: fontes do Google sem CSP (app local) e card de aprovação sem a lista de faixas (a ordem está no painel; D36) |
 
 Custo dos turnos no Haiku 4.5: US$ 0,012 a 0,072 por turno (o de 137 faixas com 5 chamadas repetidas de `dj_build_set`, P11).
 

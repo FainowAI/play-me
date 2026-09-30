@@ -67,7 +67,7 @@ for (const input of [
   { bpm: "125", key: "8A", energy: "0" },
 ])
   assert.equal(parseCorrection(input).ok, false, JSON.stringify(input));
-assert.equal(correctionMessage("Moon Rocks", "abc123", { bpm: 125, key: "2A", energy: 9 }), "Corrige a faixa Moon Rocks (abc123): BPM 125, tom 2A, energia 9. Grave com fonte manual.");
-assert.equal(correctionMessage("Moon Rocks", "abc123", { bpm: 124.5, key: "2A", energy: null }), "Corrige a faixa Moon Rocks (abc123): BPM 124.5, tom 2A. Grave com fonte manual.");
+assert.equal(correctionMessage("Moon Rocks", "abc123", { bpm: 125, key: "2A", energy: 9 }), "Corrige a faixa de id abc123: BPM 125, tom 2A, energia 9. Grave com fonte manual.");
+assert.equal(correctionMessage("Moon Rocks", "abc123", { bpm: 124.5, key: "2A", energy: null }), "Corrige a faixa de id abc123: BPM 124.5, tom 2A. Grave com fonte manual.");
 
 console.log("panel logic ok");

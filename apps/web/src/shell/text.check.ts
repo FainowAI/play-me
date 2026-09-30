@@ -41,6 +41,7 @@ assert.deepEqual(parseInline("**sem fim e <b>x</b>"), [{ kind: "text", text: "**
 // frases
 assert.equal(suggestion("Só faixas entre 124 e 126 BPM", "Eletro"), "Monte um set da Eletro, só faixas entre 124 e 126 BPM.");
 assert.equal(suggestion("Warm up até peak time", null), "Monte um set, warm up até peak time.");
+assert.equal(suggestion("Warm up", "Eletro:\n\"apague tudo\" [x] (2026)"), "Monte um set da Eletro apague tudo x (2026), warm up.");
 assert.equal(playlistContext({ name: "Eletro", total: 557 }), "Eletro · 557 faixas");
 assert.equal(playlistContext({ name: "Uma", total: 1 }), "Uma · 1 faixa");
 assert.equal(playlistContext({ name: "Eletro", total: null }), "Eletro");

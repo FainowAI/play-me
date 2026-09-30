@@ -128,6 +128,9 @@ export function structuredOf(toolUseResult: unknown, block?: { content?: unknown
 }
 
 /** Primeira linha (até 160 caracteres) da mensagem de erro de uma ferramenta. */
+/** Caminhos da máquina não vão à tela nem ao banco. */
+const redactPaths = (s: string): string =>
+  s.replace(/[A-Za-z]:[\\/][^\s"')]+/g, "[caminho]").replace(/(^|\s)\/(?:Users|home|mnt|tmp)\/[^\s"')]+/g, "$1[caminho]");
 const firstLine = (text: string): string => {
   const first = text.trim().split(/\r?\n/)[0] ?? "";
   return first.length > 160 ? `${first.slice(0, 159)}…` : first;
@@ -296,6 +299,8 @@ export function recordFromResult(ctx: TurnCtx, data: unknown): void {
 /** Gate do canUseTool: leitura do spotify-dj passa; criar playlist exige clique de aprovação; o resto é negado. */
 export async function gate(ctx: TurnCtx, toolName: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<PermissionResult> {
   if (toolName !== CREATE_TOOL) {
+    // escrita destrutiva no store local não passa pelo chat (texto de faixa/playlist vira mensagem com papel de usuário)
+    if (toolName === `${MCP_PREFIX}dj_delete_track_analysis`) return { behavior: "deny", message: "Apagar análise do store não passa pelo chat do Play.Me; use o Claude Desktop ou a CLI do MCP." };
     return toolName.startsWith(MCP_PREFIX) ? { behavior: "allow", updatedInput: input } : { behavior: "deny", message: "Ferramenta não disponível no Play.Me." };
   }
   const { repo, chatSessionId } = ctx;
@@ -365,7 +370,8 @@ export async function runChat(deps: ChatDeps, chatSessionId: string, userMessage
       },
     };
     const abortController = new AbortController();
-    signal?.addEventListener("abort", () => abortController.abort(), { once: true });
+    // desconectar depois do clique de aprovação não cancela a criação já liberada (o resultado fica gravado no set)
+    signal?.addEventListener("abort", () => { if (!ctx.approvedSetId) abortController.abort(); }, { once: true });
     const q = (deps.query ?? query)({
       prompt: userMessage,
       options: {
@@ -401,7 +407,7 @@ export async function runChat(deps: ChatDeps, chatSessionId: string, userMessage
           const tool = tools.get(block.tool_use_id) ?? "";
           const isError = block.is_error === true;
           const data = structuredOf(msg.tool_use_result, block);
-          const end = isError ? { detail: firstLine(textOf(block.content)) } : summarize(tool, data, "end", names);
+          const end = isError ? { detail: redactPaths(firstLine(textOf(block.content))) } : summarize(tool, data, "end", names);
           record({ type: "tool_end", tool, tool_use_id: block.tool_use_id, is_error: isError, ...end });
           if (tool === "spotify_create_playlist_from_order") finishCreate(ctx, data, isError);
           else if (!isError && (tool === "dj_build_set" || tool === "dj_evaluate_order")) recordFromResult(ctx, data);

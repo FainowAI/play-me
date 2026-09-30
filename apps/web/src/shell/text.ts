@@ -76,7 +76,9 @@ export function playlistContext(p: { name: string; total: number | null }): stri
 /** Pedido pronto do Início vira mensagem: "Monte um set da Eletro, warm up até peak time." */
 export function suggestion(label: string, playlist: string | null): string {
   const ask = label.charAt(0).toLowerCase() + label.slice(1); // só a inicial: "BPM" segue maiúsculo
-  return `Monte um set${playlist ? ` da ${playlist}` : ""}, ${ask}.`;
+  // nome de playlist vira parte da mensagem do usuário: só letras, dígitos e pontuação simples, até 60 caracteres
+  const name = playlist?.replace(/[^\p{L}\p{N} .,'&()-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+  return `Monte um set${name ? ` da ${name}` : ""}, ${ask}.`;
 }
 
 /** "Ver as 20 transições". */

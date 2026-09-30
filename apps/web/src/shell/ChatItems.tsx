@@ -206,7 +206,8 @@ function SentBlock({ app }: { app: App }) {
   const set = app.state.set;
   const latest = set?.versions[set.versions.length - 1];
   if (!set || set.set.status !== "enviado" || !latest) return null;
-  const url = set.set.spotify_url;
+  const raw = set.set.spotify_url;
+  const url = raw && raw.startsWith("https://open.spotify.com/") ? raw : null; // só abre o Spotify
   // o nome da playlist criada vem do pedido de aprovação; o set guarda o título da conversa
   const created = app.state.items.filter((i) => i.kind === "approval" && i.status === "approved" && i.set_id === set.set.id).at(-1);
   const name = created?.kind === "approval" ? created.playlist_name : set.set.name;

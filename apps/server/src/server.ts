@@ -26,6 +26,15 @@ class HttpError extends Error {
   }
 }
 
+/** Id de rota: % malformado é 400, não 500. */
+function decodeId(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    throw new HttpError(400, "Id inválido.");
+  }
+}
+
 async function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -92,7 +101,7 @@ export function createHttpServer(deps: HttpDeps): http.Server {
 
     let m = /^\/api\/sessions\/([^/]+)$/.exec(path);
     if (m && method === "GET") {
-      const id = decodeURIComponent(m[1] ?? "");
+      const id = decodeId(m[1] ?? "");
       const session = repo.getSession(id);
       if (!session) throw new HttpError(404, "Sessão não encontrada.");
       const set = repo.getCurrentSet(id);
@@ -106,7 +115,7 @@ export function createHttpServer(deps: HttpDeps): http.Server {
 
     m = /^\/api\/sets\/([^/]+)$/.exec(path);
     if (m && method === "GET") {
-      const id = decodeURIComponent(m[1] ?? "");
+      const id = decodeId(m[1] ?? "");
       const set = repo.getSet(id);
       if (!set) throw new HttpError(404, "Set não encontrado.");
       return json(200, { set, versions: repo.listVersions(id).map(versionDetail) });
@@ -114,7 +123,7 @@ export function createHttpServer(deps: HttpDeps): http.Server {
 
     m = /^\/api\/approvals\/([^/]+)$/.exec(path);
     if (m && method === "POST") {
-      const id = decodeURIComponent(m[1] ?? "");
+      const id = decodeId(m[1] ?? "");
       const { decision } = await readJson(req);
       if (decision !== "approved" && decision !== "rejected") throw new HttpError(400, 'decision deve ser "approved" ou "rejected".');
       const current = repo.getApproval(id);

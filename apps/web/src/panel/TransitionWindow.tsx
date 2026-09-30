@@ -123,7 +123,7 @@ export function TransitionWindow({ version, position, onClose, onSend }: Transit
               </Button>
             ))}
             <span className="pn-grow" />
-            <Button variant="outline" size="sm" onClick={() => onSend(`Troca a faixa ${position + 1} (${titleB}) por outra que encaixe.`)}>
+            <Button variant="outline" size="sm" onClick={() => onSend(`Troca a faixa ${position + 1} por outra que encaixe.`)}>
               Trocar B
             </Button>
             <Button variant="ghost" size="sm" icon="play" disabled>
