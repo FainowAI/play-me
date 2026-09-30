@@ -1,4 +1,4 @@
-import { DEFAULT_WEIGHTS, WEAK_TRANSITION_SCORE } from "../constants.js";
+import { DEFAULT_WEIGHTS, ECHO_MAX_HARMONIC, ECHO_MIN_BPM_DIFF, ECHO_ONLY_PENALTY, WEAK_TRANSITION_SCORE } from "../constants.js";
 import type {
   BridgeSuggestion,
   CurvePreset,
@@ -82,6 +82,11 @@ export function bpmDistance(a: number, b: number): { diff: number; mode: "normal
   return halfDouble + 0.5 < normal ? { diff: halfDouble, mode: "half_double" } : { diff: normal, mode: "normal" };
 }
 
+/** Par que só aceita echo out (regra 1 da Fase P): BPM distante demais ou choque harmônico forte. */
+export function echoOnly(harmonicScore: number, bpmDiff: number): boolean {
+  return bpmDiff > ECHO_MIN_BPM_DIFF || harmonicScore <= ECHO_MAX_HARMONIC;
+}
+
 export function bpmScore(diff: number): number {
   if (diff <= 2) return 1 - 0.03 * diff; // excelente
   if (diff <= 5) return 0.9 - 0.08 * (diff - 2); // aceitável
@@ -138,8 +143,16 @@ export function scoreTransition(from: TrackAnalysis, to: TrackAnalysis, ctx: Sco
   const progressionS = progressionScore(to.energy, targetEnergy(ctx.curve, ctx.tTo));
 
   const w = ctx.weights;
-  const total =
-    w.camelot * harmonic.score + w.bpm * bpmS + w.energy * energyS + w.style * styleS + w.progression * progressionS;
+  const echo = echoOnly(harmonic.score, bpm.diff);
+  const total = Math.max(
+    0,
+    w.camelot * harmonic.score +
+      w.bpm * bpmS +
+      w.energy * energyS +
+      w.style * styleS +
+      w.progression * progressionS -
+      (echo ? ECHO_ONLY_PENALTY : 0),
+  );
 
   return {
     from_id: from.track_id,
@@ -164,7 +177,9 @@ export function scoreTransition(from: TrackAnalysis, to: TrackAnalysis, ctx: Sco
       progression: round(progressionS),
       total: round(total),
     },
-    reason: explain(harmonic.relation, harmonic.type, bpm.diff, bpm.mode, energyDelta, hasEnergy, desiredDelta),
+    reason:
+      explain(harmonic.relation, harmonic.type, bpm.diff, bpm.mode, energyDelta, hasEnergy, desiredDelta) +
+      (echo ? ". Par só aceita echo out: nota reduzida." : ""),
   };
 }
 

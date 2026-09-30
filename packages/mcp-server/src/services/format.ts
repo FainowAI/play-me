@@ -47,6 +47,8 @@ export function trackLine(track: SpotifyTrackSummary, analysis?: TrackAnalysis):
   return `${track.position + 1}. ${track.name} — ${artists} (${formatDuration(track.duration_ms)})${data}${local} · id: ${track.id ?? "n/a"}`;
 }
 
+const TYPE_PT = { blend: "blend", bass_swap: "troca de grave", filter: "filtro", echo_out: "echo out" } as const;
+
 export function setToMarkdown(result: SetResult): string {
   const lines: string[] = [];
   lines.push(`# Set proposto · curva "${result.curve}" · nota média ${result.average_score}`);
@@ -73,6 +75,13 @@ export function setToMarkdown(result: SetResult): string {
     lines.push(`${position.position}. ${position.label} · ${position.bpm} BPM · ${position.camelot}${energy}`);
   });
 
+  if (result.plans?.length) {
+    lines.push("", "## Plano das passagens");
+    result.plans.forEach((plan, index) => {
+      lines.push(`${index + 1} → ${index + 2} · ${TYPE_PT[plan.type]} · ${plan.length_bars} c. · confiança ${plan.confidence}`);
+      for (const alert of plan.alerts) if (!alert.startsWith("vocal e grave: sem dado")) lines.push(`  - ${alert}`);
+    });
+  }
   if (result.weak_transitions.length) {
     lines.push("", "## Pontos fracos");
     for (const index of result.weak_transitions) {

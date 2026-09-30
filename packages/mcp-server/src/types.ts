@@ -127,4 +127,45 @@ export interface SetResult {
   problem_tracks: { track_id: string; label: string; reasons: string[] }[];
   bridges: BridgeSuggestion[];
   warnings: string[];
+  plans?: TransitionPlan[]; // um por passagem, na ordem de `transitions` (preenchido pelas ferramentas)
+}
+
+// ---------- Fase P: planejador por metadados (D30) ----------
+
+export type TransitionType = "blend" | "bass_swap" | "filter" | "echo_out";
+
+/** Plano de transição sem estrutura por compasso: só BPM, tom e energia. */
+export interface TransitionPlan {
+  from: string; // track_id de A (sai)
+  to: string; // track_id de B (entra)
+  type: TransitionType;
+  length_bars: 4 | 8 | 16 | 32;
+  bass_swap_bar: number | null; // compasso relativo (1-based) em que o grave troca; null = sem troca
+  tempo: {
+    from_bpm: number;
+    to_bpm: number;
+    diff: number; // de bpmDistance (já considera metade/dobro)
+    mode: "normal" | "half_double";
+    strategy: "match_incoming" | "ramp";
+  };
+  harmonic: { from: string; to: string; relation: string; class: HarmonicType };
+  energy_delta: number | null; // energia de B − energia de A; null sem energia nas duas
+  confidence: number; // 0..1, duas casas
+  alerts: string[];
+  reason: string; // português, uma frase
+  planner_version: "meta-1";
+}
+
+/** Uma passagem do guia para o Mix do app do Spotify (sem API: o usuário aplica à mão). */
+export interface MixGuideStep {
+  position: string; // ex.: "14 → 15"
+  from_label: string;
+  to_label: string;
+  preset: string; // só presets confirmados em mix-presets.ts
+  length_bars: number;
+  volume: string; // controle Volume do Mix
+  eq: string; // controle EQ do Mix (grave, médio, agudo)
+  effects: string; // controle Efeitos do Mix (passa-baixa, passa-alta)
+  alerts: string[];
+  text: string; // linha pronta para o guia
 }

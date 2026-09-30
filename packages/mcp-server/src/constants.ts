@@ -45,5 +45,13 @@ export const HARMONIC_THRESHOLDS = {
   creative: 0.55,
 } as const;
 
+/** Planejador por metadados (Fase P, D30). */
+export const PLANNER_VERSION = "meta-1" as const;
+/** Par que só aceita echo out perde este valor na nota total da transição. */
+export const ECHO_ONLY_PENALTY = 0.1;
+/** Echo out obrigatório: diferença de BPM acima disto, ou nota harmônica até ECHO_MAX_HARMONIC (trítono/choque). */
+export const ECHO_MIN_BPM_DIFF = 6;
+export const ECHO_MAX_HARMONIC = 0.18;
+
 /** Nota geral abaixo da qual a transição entra no relatório de pontos fracos. */
 export const WEAK_TRANSITION_SCORE = 0.62;

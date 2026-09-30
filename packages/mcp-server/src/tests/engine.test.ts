@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { formatCamelot, harmonicMatch, parseKey } from "../services/camelot.js";
-import { bpmDistance, buildSet, targetEnergy } from "../services/dj-engine.js";
+import { ECHO_ONLY_PENALTY } from "../constants.js";
+import { bpmDistance, buildSet, echoOnly, scoreTransition, targetEnergy } from "../services/dj-engine.js";
 import { setToMarkdown } from "../services/format.js";
 import type { TrackAnalysis } from "../types.js";
 
@@ -34,6 +35,32 @@ assert.equal(bpmDistance(124, 128).diff, 4);
 // ---------- Curva ----------
 assert.ok(targetEnergy("classic", 0) < targetEnergy("classic", 0.8));
 assert.ok(targetEnergy("classic", 1) < targetEnergy("classic", 0.8));
+
+// ---------- Penalidade echo-only ----------
+{
+  const mk = (camelot: string): TrackAnalysis => ({
+    track_id: "echo".padEnd(22, "0"),
+    bpm: 124,
+    camelot,
+    energy: 6,
+    style: "techno",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  });
+  const weights = { camelot: 0.35, bpm: 0.25, energy: 0.25, style: 0.1, progression: 0.05 };
+  const ctx = { curve: "classic" as const, weights, tFrom: 0.4, tTo: 0.43 };
+  const tritone = scoreTransition(mk("8A"), mk("2A"), ctx);
+  assert.ok(echoOnly(tritone.scores.camelot, 0));
+  assert.match(tritone.reason, /echo out/);
+  const raw =
+    weights.camelot * tritone.scores.camelot +
+    weights.bpm * tritone.scores.bpm +
+    weights.energy * tritone.scores.energy +
+    weights.style * tritone.scores.style +
+    weights.progression * tritone.scores.progression;
+  assert.ok(Math.abs(raw - ECHO_ONLY_PENALTY - tritone.scores.total) < 0.02, "total = bruto - penalidade (tolerância de arredondamento)");
+  const safe = scoreTransition(mk("8A"), mk("9A"), ctx);
+  assert.doesNotMatch(safe.reason, /echo out/);
+}
 
 // ---------- Set real: playlist Eletro (prints do Mixar; energia e estilo estimados) ----------
 let seq = 0;

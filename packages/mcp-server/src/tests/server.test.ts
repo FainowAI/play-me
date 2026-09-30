@@ -41,6 +41,7 @@ try {
     "dj_evaluate_order",
     "dj_score_transition",
     "dj_set_track_analysis",
+    "export_mix_guide",
     "metadata_coverage",
     "metadata_lookup",
     "spotify_auth_status",
@@ -48,6 +49,7 @@ try {
     "spotify_get_playlist_tracks",
     "spotify_list_my_playlists",
     "spotify_search_tracks",
+    "transition_plan",
   ]);
   for (const tool of tools) {
     assert.ok(tool.description && tool.description.length > 40, `${tool.name} sem descrição`);

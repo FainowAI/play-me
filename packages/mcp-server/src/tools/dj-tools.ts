@@ -5,8 +5,9 @@ import { formatCamelot, musicalName, parseKey } from "../services/camelot.js";
 import { getContext } from "../services/context.js";
 import { buildReport, buildSet, normalizeWeights, scoreTransition } from "../services/dj-engine.js";
 import { fail, render, setToMarkdown } from "../services/format.js";
+import { mixGuideStep, planTransition } from "../services/planner.js";
 import { formatError, parseSpotifyId } from "../services/spotify-client.js";
-import { ResponseFormat, type TrackAnalysis } from "../types.js";
+import { type MixGuideStep, ResponseFormat, type SetResult, type TrackAnalysis } from "../types.js";
 
 const responseFormat = z
   .nativeEnum(ResponseFormat)
@@ -72,6 +73,18 @@ async function resolveTrackIds(playlist?: string, trackIds?: string[]): Promise<
     names.set(track.id, `${track.name} — ${track.artists.join(", ")}`);
   }
   return { ids, names };
+}
+
+/** Preenche result.plans (um por passagem); se o planejador falhar, avisa e segue sem planos. */
+function attachPlans(result: SetResult, tracks: TrackAnalysis[]): void {
+  const byId = new Map(tracks.map((track) => [track.track_id, track]));
+  try {
+    result.plans = result.transitions.map((t) =>
+      planTransition(byId.get(t.from_id) as TrackAnalysis, byId.get(t.to_id) as TrackAnalysis),
+    );
+  } catch (error) {
+    result.warnings.push(`Plano das passagens indisponível: ${formatError(error)}`);
+  }
 }
 
 export function registerDjTools(server: McpServer): void {
@@ -270,6 +283,7 @@ Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera
         if (tracks.some((track) => track.energy === undefined)) {
           result.warnings.push("Há faixas sem energia informada: a curva usa nota neutra para elas.");
         }
+        attachPlans(result, tracks);
         const data = { ...result, ordered_track_ids: result.order.map((position) => position.track_id) };
         return render(response_format, () => setToMarkdown(result), data as unknown as Record<string, unknown>);
       } catch (error) {
@@ -312,7 +326,110 @@ Args:
         if (missing.length) {
           result.warnings.unshift(`${missing.length} faixa(s) sem análise foram puladas na avaliação: ${missing.map((id) => names.get(id) ?? id).join("; ")}.`);
         }
+        attachPlans(result, tracks);
         return render(response_format, () => setToMarkdown(result), result as unknown as Record<string, unknown>);
+      } catch (error) {
+        return fail(formatError(error));
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------- transition plan
+  server.registerTool(
+    "transition_plan",
+    {
+      title: "Plano de transição entre duas faixas",
+      description: `Sugere como passar da faixa A para a faixa B: tipo (blend, troca de grave, filtro ou echo out), comprimento em compassos, troca de grave, estratégia de tempo, harmonia, variação de energia, confiança e alertas.
+
+O plano é feito por metadados (BPM, tom e energia salvos), sem estrutura por compasso da faixa. O Spotify não tem API para transições: aplique à mão no Mix do app do Spotify.
+
+Args:
+  - from_track, to_track: IDs, URIs ou links (precisam ter análise salva)
+  - response_format`,
+      inputSchema: z.object({ from_track: z.string().min(1), to_track: z.string().min(1), response_format: responseFormat }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ from_track, to_track, response_format }) => {
+      try {
+        const ids = [parseSpotifyId(from_track, "track"), parseSpotifyId(to_track, "track")];
+        const { found, missing } = loadAnalyses(ids);
+        if (missing.length) return fail(`Sem análise salva para: ${missing.join(", ")}. Use dj_set_track_analysis antes.`);
+        const [a, b] = found as [TrackAnalysis, TrackAnalysis];
+        const plan = planTransition(a, b);
+        return render(
+          response_format,
+          () =>
+            [
+              `${a.label ?? a.track_id} → ${b.label ?? b.track_id}`,
+              `Tipo: ${plan.type} · ${plan.length_bars} compassos · troca de grave: ${plan.bass_swap_bar === null ? "sem troca" : `compasso ${plan.bass_swap_bar}`}`,
+              `Tempo: ${plan.tempo.from_bpm} → ${plan.tempo.to_bpm} BPM (dif. ${plan.tempo.diff}, ${plan.tempo.mode}) · estratégia ${plan.tempo.strategy}`,
+              `Harmonia: ${plan.harmonic.from} → ${plan.harmonic.to} · ${plan.harmonic.relation} (${plan.harmonic.class})`,
+              `ΔEnergia: ${plan.energy_delta ?? "?"} · confiança ${plan.confidence}`,
+              ...(plan.alerts.length ? ["Alertas:", ...plan.alerts.map((alert) => `- ${alert}`)] : []),
+              `Motivo: ${plan.reason}`,
+            ].join("\n"),
+          { plan },
+        );
+      } catch (error) {
+        return fail(formatError(error));
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------- mix guide
+  server.registerTool(
+    "export_mix_guide",
+    {
+      title: "Guia do Mix para o app do Spotify",
+      description: `Gera, na ordem dada e sem reordenar, um guia passagem por passagem para aplicar no Mix do app do Spotify (volume, EQ e efeitos).
+
+O plano é feito por metadados (BPM, tom e energia), sem estrutura por compasso. O Spotify não tem API para transições: o usuário aplica à mão.
+
+Args:
+  - playlist (string, opcional): usa a ordem atual da playlist
+  - track_ids (string[], opcional): usa esta ordem
+  - response_format
+
+Faixas sem análise salva são puladas e listadas no topo.`,
+      inputSchema: z
+        .object({
+          playlist: z.string().optional(),
+          track_ids: z.array(z.string().min(1)).max(LIMITS.maxTracksPerSet).optional(),
+          response_format: responseFormat,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ playlist, track_ids, response_format }) => {
+      try {
+        const { ids, names } = await resolveTrackIds(playlist, track_ids);
+        const { found, missing } = loadAnalyses(ids);
+        if (found.length < 2) return fail("São necessárias pelo menos 2 faixas com análise salva.");
+        const byId = new Map(found.map((entry) => [entry.track_id, entry]));
+        const labelOf = (a: TrackAnalysis): string => a.label ?? names.get(a.track_id) ?? a.track_id;
+        const steps: MixGuideStep[] = [];
+        for (let i = 1; i < ids.length; i += 1) {
+          const a = byId.get(ids[i - 1] as string);
+          const b = byId.get(ids[i] as string);
+          if (!a || !b) continue; // par com faixa sem análise é pulado
+          steps.push(mixGuideStep(planTransition(a, b), `${i} → ${i + 1}`, labelOf(a), labelOf(b)));
+        }
+        const warning = missing.length
+          ? `${missing.length} faixa(s) sem análise: os pares com elas foram pulados: ${missing.map((id) => names.get(id) ?? id).join("; ")}.`
+          : undefined;
+        return render(
+          response_format,
+          () =>
+            [
+              `# Guia do Mix · ${steps.length} passagens`,
+              ...(warning ? ["", warning] : []),
+              "",
+              "Aplique no Mix do app do Spotify, passagem por passagem. O Spotify não tem API para transições.",
+              "",
+              ...steps.map((step) => step.text),
+            ].join("\n"),
+          { steps, ...(warning ? { warnings: [warning] } : {}) },
+        );
       } catch (error) {
         return fail(formatError(error));
       }

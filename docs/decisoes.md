@@ -48,7 +48,7 @@ EAP e roadmap: `docs/eap_play-me_fainow.md` (29/09/2026).
 
 ## Próximo passo (29/09/2026)
 
-1. Sprint 0 (29/09): GetSongBPM removido e aviso de tom a confirmar no Mixar entregues (commit c253b60). Falta o catálogo de presets do Mix (2.2.1): depende da lista que o usuário lê no app do Spotify.
-2. Sprint 1: Parte B do prompt 04 (`docs/prompts/04-fase-p-planejador.md`), Fase P.
+1. Sprint 0 e Sprint 1 entregues em 29/09 (Fase P): planejador por metadados, `transition_plan`, `export_mix_guide`, plano por passagem no set e penalidade de echo out (ADR 0005). O set [DJ MIX] Eletro tem plano válido nas 20 passagens.
+2. Pendente da Fase P: confirmar no app outros presets do Mix além de Fade e Rise (2.2.1).
 3. Prompt 05 (Sprint 2): servidor local. Prompt 06 (Sprint 3): interface.
 4. Sprint 4 (Fase K) com o `feature-builder`, depois da Sprint 3.

@@ -52,13 +52,13 @@ Legenda: ✅ feito · ⬜ a fazer.
       1.3.1 ✅ Aviso nas saídas de set: faixas com tom [A VALIDAR]
   2. Planejador de transições (Fase P)
     2.1 TransitionPlan por metadados
-      2.1.1 ⬜ Regras puras em planner.ts (tipo, comprimento, tempo, harmonia, alertas) + testes
-      2.1.2 ⬜ Ferramenta transition_plan (A → B)
+      2.1.1 ✅ Regras puras em planner.ts (tipo, comprimento, tempo, harmonia, alertas) + testes
+      2.1.2 ✅ Ferramenta transition_plan (A → B)
     2.2 Guia do Mix
-      2.2.1 ⬜ Catalogar os presets do Mix do app do Spotify (você lista no app)
-      2.2.2 ⬜ Ferramenta export_mix_guide: texto por passagem
+      2.2.1 🟡 Catalogar os presets do Mix: Fade e Rise (confirmados publicamente); outros quando você confirmar no app
+      2.2.2 ✅ Ferramenta export_mix_guide: texto por passagem
     2.3 Set com viabilidade de transição
-      2.3.1 ⬜ Plano por passagem em dj_build_set e dj_evaluate_order, com penalidade para par só com cut/echo
+      2.3.1 ✅ Plano por passagem em dj_build_set e dj_evaluate_order, com penalidade para par só com cut/echo
   3. Montagem e versões do set
     3.1 Persistência local
       3.1.1 ⬜ Schema SQLite (sets, versões, planos, notas, aprovações, sessões)

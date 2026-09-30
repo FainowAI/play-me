@@ -329,7 +329,8 @@ O MCP nunca roda análise pesada dentro do processo stdio.
 Cada fase fecha com critério de aceite verificável. Não pular.
 
 - **Fase M — Metadados (concluída em 29/09).** BPM e tom pela ReccoBeats, com o Mixar como verdade (`metadata_lookup`, `metadata_coverage`; ADR 0004). Eletro gravada: 436 de 557 faixas (22 Mixar, 414 web); tom da web fica [A VALIDAR].
-- **Fase P — Planejador por metadados (agora, prompt 04).** `TransitionPlan` sem estrutura, em TypeScript no MCP (D30): tipo e comprimento por BPM, tom e energia, mais o guia do Mix.
+- **Fase P — Planejador por metadados (concluída em 29/09, ADR 0005).** `TransitionPlan` sem estrutura, em TypeScript no MCP (D30): tipo e comprimento por BPM, tom e energia, mais o guia do Mix. Falta confirmar presets do Mix além de Fade e Rise.
+- **Próximo: Fase C, Sprint 2 (prompt 05).**
 - **Fase C — Chat.** `apps/server` com Agent SDK e `apps/web` com as telas da D21.
 - **Fase K — Calibração.** Ajustar regras e pesos com as notas de `transition_feedback`.
 - **Trilha de áudio (opcional, quando houver arquivos):** antigas Fases 0 a 3 — protótipo da grade (Beat This!, suspenso em 28/09, ver prompt 02), casamento, análise básica, análise profunda.
@@ -346,8 +347,8 @@ Cada fase fecha com critério de aceite verificável. Não pular.
 
 ## Estado atual
 
-- Rota por metadados (D22, D24). Fase M concluída; próximo: prompt 04 (Fase P). Escopo, prazo, estados do set e Jev fechados nas D25 a D30; EAP em `docs/eap_play-me_fainow.md`.
-- `packages/mcp-server`: cópia do MCP em uso (original em `Desktop\mcps\spotify-dj-mcp-server`, que segue ativo no Claude Desktop). 13 ferramentas: as 11 originais (OAuth PKCE, análise manual do Mixar, montador de set por busca em feixe, criação de playlist `[DJ MIX]` privada) mais `metadata_lookup` e `metadata_coverage` (Fase M).
+- Rota por metadados (D22, D24). Fases M e P concluídas; próximo: prompt 05 (Fase C, servidor). Escopo, prazo, estados do set e Jev fechados nas D25 a D30; EAP em `docs/eap_play-me_fainow.md`.
+- `packages/mcp-server`: cópia do MCP em uso (original em `Desktop\mcps\spotify-dj-mcp-server`, que segue ativo no Claude Desktop). 15 ferramentas: as 11 originais (OAuth PKCE, análise manual do Mixar, montador de set por busca em feixe, criação de playlist `[DJ MIX]` privada), `metadata_lookup` e `metadata_coverage` (Fase M), `transition_plan` e `export_mix_guide` (Fase P, ADR 0005).
 - Store do MCP (`~/.spotify-dj-mcp/analysis.json`): 436 faixas da Eletro (22 do Mixar, 414 da ReccoBeats). Entrada do Mixar nunca é sobrescrita. Backup anterior à gravação: `analysis.backup-2026-09-29.json`.
 - `services/analyzer`: `decode.py` e `grid.py` prontos e testados na parte pura; Beat This! e PyTorch não instalados (trilha de áudio suspensa). ffmpeg ainda não está no WSL.
 - Jev: chave no `.env`; acesso e SDK validados na Sprint 4 (D28).
