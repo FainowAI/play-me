@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef } from "react";
 import { Button, Composer } from "../components/playme/index.ts";
-import { pendingApproval, selectVersion } from "../state.ts";
+import { pendingApproval, pendingQuestions, selectVersion } from "../state.ts";
 import { ChatItems } from "./ChatItems.tsx";
 import { COMPOSER_ID, Home } from "./Home.tsx";
 import { headData } from "./text.ts";
@@ -19,6 +19,7 @@ export function ChatColumn({ app }: { app: App }) {
   const set = state.set?.set;
   const latest = state.set?.versions.at(-1);
   const pending = pendingApproval(state) !== null;
+  const asking = pendingQuestions(state) !== null; // ask_dj esperando o DJ (Sprint 6)
 
   const scroller = useRef<HTMLDivElement>(null);
   const following = useRef(true); // false quando o usuário subiu para reler: itens novos não o puxam para o fim
@@ -56,7 +57,9 @@ export function ChatColumn({ app }: { app: App }) {
 
   const placeholder = pending
     ? "Aprove ou revise a ordem acima para continuar"
-    : state.busy
+    : asking
+      ? "Responda às perguntas para o set seguir"
+      : state.busy
       ? "Peça ajustes enquanto a análise roda"
       : set?.status === "enviado"
         ? "Conte como ficou na pista"

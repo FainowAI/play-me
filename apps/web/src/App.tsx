@@ -10,7 +10,7 @@ import { Overlay } from "./shell/Overlay.tsx";
 import { Sidebar } from "./shell/Sidebar.tsx";
 import { useApp } from "./shell/useApp.ts";
 import { useRef } from "react";
-import { pendingApproval, selectVersion, splitLabel } from "./state.ts";
+import { pendingApproval, pendingQuestions, selectVersion, splitLabel } from "./state.ts";
 import "./shell/shell.css";
 
 export function App() {
@@ -41,7 +41,7 @@ export function App() {
       <SetPanel
         set={state.set}
         version={version}
-        busy={state.busy && pendingApproval(state) === null} // esperando o clique de aprovação não é recalcular
+        busy={state.busy && pendingApproval(state) === null && pendingQuestions(state) === null} // esperando o clique de aprovação ou as respostas do DJ não é recalcular
         tab={state.panel.tab}
         onTab={app.setTab}
         onVersion={app.viewVersion}
