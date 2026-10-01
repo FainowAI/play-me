@@ -215,6 +215,27 @@ export function useApp() {
     }
   };
 
+  /**
+   * Respostas do modal de perguntas, otimista: o item vira respondido (ou pulado, se tudo é null) na hora e a janela fecha.
+   * 404/409 = já respondida, expirada ou o servidor reiniciou: vira "expirada" e a mensagem do servidor entra no chat (como o `decide`).
+   * Erro de rede com o turno vivo: volta a pendente (a janela reabre) e o clique pode ser repetido; sem turno vivo ninguém mais espera.
+   */
+  const answer = async (questionsId: string, answers: Record<string, string | null>) => {
+    if (!state.items.some((it) => it.kind === "questions" && it.id === questionsId && it.status === "pending")) return; // segundo envio (tecla repetida) não vira 409
+    dispatch({ type: "questions_done", questionsId, status: Object.values(answers).every((a) => a === null) ? "skipped" : "answered", answers });
+    try {
+      await api.answer(questionsId, answers);
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 409)) {
+        dispatch({ type: "questions_done", questionsId, status: "expired", answers: null });
+        dispatch({ type: "turn_failed", text: e.message });
+      } else {
+        dispatch({ type: "questions_done", questionsId, status: turn.current ? "pending" : "expired", answers: null });
+        notice(errorText(e));
+      }
+    }
+  };
+
   const newChat = () => {
     abortTurn();
     setReq.current++;
@@ -289,6 +310,8 @@ export function useApp() {
     ask,
     approve: (approvalId: string) => decide(approvalId, "approved"),
     reject: (approvalId: string) => decide(approvalId, "rejected"),
+    answer,
+    openQuestions: () => dispatch({ type: "overlay", overlay: { kind: "questions" } }), // reabre a janela que o DJ fechou; ela abre sozinha quando as perguntas chegam (state.ts)
     newChat,
     openSession,
     selectPlaylist: (playlist: Playlist) => {

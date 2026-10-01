@@ -196,3 +196,38 @@
 
 /* app (Sprint 5): o shorthand `font` zera font-variant-numeric; todo texto em mono com número segue tabular (DESIGN.md §9.3) */
 .pm-phrase__bars, .pm-phrase__mark b, .pm-trans__meta, .pm-wheel__seg text, .pm-wheel__center, .pm-tool__name { font-variant-numeric: tabular-nums; }
+
+/* app (Sprint 6): QuestionsWindow, o modal de perguntas do agente (ask_dj) como o do Claude. É o conteúdo da janela do Overlay (o miolo dá o padding):
+   pergunta à esquerda, "1 de N" com ‹ › à direita, opções em linhas com badge numérico, "Outra opção" com lápis e "Pular" no canto. Só tokens. */
+.pm-ask { display: flex; flex-direction: column; gap: var(--space-4); }
+.pm-ask__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+.pm-ask__titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.pm-ask__eyebrow { color: var(--ink-subtle); }
+.pm-ask__eyebrow::before { content: ""; display: inline-block; width: 12px; height: 1px; margin-right: var(--space-2); vertical-align: middle; background: var(--line-strong); }
+.pm-ask__q { margin: 0; overflow-wrap: anywhere; }
+.pm-ask__nav { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); }
+.pm-ask__count { min-width: 48px; text-align: center; font: 500 12px/16px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-subtle); }
+.pm-ask__step { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--ink-muted); cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+.pm-ask__step:hover:not(:disabled) { background: var(--surface-overlay); color: var(--ink); }
+.pm-ask__step:disabled { opacity: 0.4; cursor: not-allowed; }
+.pm-ask__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+/* as opções sobem em escalonado (pm-rise, 30 ms entre elas); sem sibling-index() entram juntas */
+.pm-ask__list > li { animation: pm-rise var(--duration-base) var(--ease-out) backwards; animation-delay: calc(min(sibling-index() - 1, 11) * 30ms); }
+.pm-ask__opt { box-sizing: border-box; width: 100%; display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3); border: 0; border-radius: var(--radius-md); background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard); }
+.pm-ask__opt:hover:not(:disabled) { background: var(--surface-overlay); }
+.pm-ask__opt[aria-pressed="true"] { background: var(--surface-sunken); }
+.pm-ask__opt:disabled { opacity: 0.4; cursor: not-allowed; }
+/* badge do número (ou do lápis): mono 13, quadrado de 28 com raio 6; a opção escolhida o inverte (ink) e a linha ao passar o mouse o escurece */
+.pm-ask__num { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-sm); background: var(--surface-overlay); color: var(--ink-muted); font: 500 13px/1 var(--font-mono); font-variant-numeric: tabular-nums; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+.pm-ask__opt:hover:not(:disabled) .pm-ask__num { background: var(--surface-sunken); color: var(--ink); }
+.pm-ask__opt[aria-pressed="true"] .pm-ask__num { background: var(--ink); color: var(--ink-inverse); }
+.pm-ask__text { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-top: 2px; }
+.pm-ask__label { font-weight: 500; overflow-wrap: anywhere; }
+.pm-ask__rec { font-weight: 400; color: var(--ink-subtle); }
+.pm-ask__desc { font-size: 13px; line-height: 20px; color: var(--ink-muted); overflow-wrap: anywhere; }
+.pm-ask__opt--other .pm-ask__label { color: var(--ink-muted); }
+.pm-ask__other { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); }
+.pm-ask__input { flex: 1; min-width: 0; box-sizing: border-box; height: 32px; padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-overlay); color: var(--ink); font: 400 14px/20px var(--font-sans); }
+.pm-ask__input::placeholder { color: var(--ink-subtle); }
+.pm-ask__input:disabled { opacity: 0.4; }
+.pm-ask__foot { display: flex; justify-content: flex-end; }

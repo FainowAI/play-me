@@ -162,6 +162,30 @@ try {
   assert.ok(await rejected("dj_build_set", { track_ids: ids, duration_minutes: 5 }), "duration_minutes abaixo de 10");
   assert.ok(await rejected("dj_build_set", { track_ids: ids, duration_minutes: 601 }), "duration_minutes acima de 600");
 
+  // P16: Jev na ordem. Aqui a chave está zerada: o Jev não entra e o resultado diz por quê (use_jev: true avisa; false desliga)
+  type JevBuilt = { jev?: { used: boolean; reason?: string }; warnings: string[]; ordered_track_ids: string[] };
+  const jevBuilt = async (args: Record<string, unknown>): Promise<JevBuilt> =>
+    JSON.parse(text(await call("dj_build_set", { track_ids: ids, curve: "classic", response_format: "json", ...args }))) as JevBuilt;
+  const byDefault = await jevBuilt({});
+  assert.deepEqual(byDefault.jev, { used: false, reason: "sem TYPESAFE_API_KEY" }, "padrão = chave presente: sem chave, só regras");
+  assert.ok(!byDefault.warnings.some((w) => w.startsWith("Jev")), "sem pedir o Jev e sem chave, nenhum aviso novo");
+  const forced = await jevBuilt({ use_jev: true });
+  assert.deepEqual(forced.jev, { used: false, reason: "sem TYPESAFE_API_KEY" });
+  assert.ok(forced.warnings.some((w) => w.startsWith("Jev não consultado: sem TYPESAFE_API_KEY")), "pedir o Jev sem chave avisa");
+  assert.deepEqual(forced.ordered_track_ids, byDefault.ordered_track_ids, "sem chave a ordem é a das regras");
+  const off = await jevBuilt({ use_jev: false });
+  assert.deepEqual(off.jev, { used: false, reason: "desligado (use_jev: false)" });
+  assert.deepEqual(off.ordered_track_ids, byDefault.ordered_track_ids);
+  assert.ok(!off.warnings.some((w) => w.startsWith("Jev")));
+  assert.ok(!/^Jev:/m.test(text(await call("dj_build_set", { track_ids: ids, curve: "classic", use_jev: true }))), "sem Jev, o markdown não ganha linha");
+  assert.ok(await rejected("dj_build_set", { track_ids: ids, use_jev: "sim" }), "use_jev é booleano");
+  const buildTool = tools.find((tool) => tool.name === "dj_build_set");
+  const useJevProp = (buildTool?.inputSchema.properties as Record<string, { type?: string; default?: unknown }> | undefined)?.use_jev;
+  assert.deepEqual([useJevProp?.type, useJevProp?.default], ["boolean", undefined], "use_jev é opcional e sem padrão: a chave presente decide, no servidor");
+  assert.ok(!(buildTool?.inputSchema.required ?? []).includes("use_jev"));
+  assert.match(buildTool?.description ?? "", /use_jev \(boolean, padrão: true se houver TYPESAFE_API_KEY\)/);
+  assert.match(buildTool?.description ?? "", /O campo jev traz/);
+
   // P12: energia estimada (notas da ReccoBeats) vem marcada; a do Mixar e a do usuário não
   type Built = { order: { track_id: string; energy: number | null; energy_estimated: boolean }[]; warnings: string[] };
   const webId = "0000000000000000000005";

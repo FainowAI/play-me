@@ -63,3 +63,5 @@ export const JEV_MODEL = "jev-latest";
 export const JEV_TIMEOUT_MS = 10_000;
 export const JEV_DEFAULT_MIN_CONFIDENCE = 0.7;
 export const JEV_COMPARE_PAIRS = { default: 20, max: 40 } as const;
+/** Jev na ordem do set (P16): candidatas que as regras oferecem por posição e falhas seguidas até o Jev parar de ser consultado. */
+export const JEV_ORDER = { candidates: 5, maxErrors: 3 } as const;

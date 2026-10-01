@@ -154,6 +154,22 @@ export interface SetDetail {
 
 // ---------- chat ----------
 
+
+// Sprint 6: perguntas do agente ao DJ antes de montar (ferramenta ask_dj → evento `questions` → POST /api/questions/:id)
+export type QuestionsStatus = "pending" | "answered" | "skipped" | "expired";
+export interface QuestionOption {
+  label: string;
+  description?: string;
+  recommended?: boolean; // a interface põe essa opção primeiro e acrescenta " (Recomendado)"
+}
+export interface Question {
+  id: string; // ^[a-z_]{1,24}$ (ex.: "tamanho", "curva")
+  text: string;
+  header?: string;
+  options: QuestionOption[]; // 2 a 4
+  allow_other: boolean; // linha "Outra opção" com texto livre
+}
+
 /** Eventos SSE do POST /api/chat, na ordem em que acontecem. */
 export type ServerEvent =
   | { type: "session"; session_id: string }
@@ -178,6 +194,15 @@ export type ServerEvent =
       track_ids: string[];
       /** Só na releitura (GET /api/sessions/:id): estado atual da approval. Ausente = pending, ao vivo. */
       status?: ApprovalStatus;
+    }
+  | {
+      type: "questions"; // Sprint 6: o agente pergunta ao DJ (ask_dj); o turno espera a resposta
+      questions_id: string;
+      title: string | null;
+      questions: Question[];
+      /** Ausente ao vivo (pendente). No turno gravado e na releitura: estado final e as respostas (label da opção ou texto livre; null = pulada). */
+      status?: QuestionsStatus;
+      answers?: Record<string, string | null>;
     }
   | { type: "thinking_delta"; text: string } // Sprint 5: pensamento ao vivo (não gravado no turno)
   | { type: "text_delta"; text: string } // Sprint 5: texto da resposta ao vivo (não gravado)

@@ -16,5 +16,6 @@ export { ChatMessage } from "./ChatMessage.tsx";
 export { ToolCall } from "./ToolCall.tsx";
 export { Composer } from "./Composer.tsx";
 export { ApprovalGate } from "./ApprovalGate.tsx";
+export { QuestionsWindow } from "./QuestionsWindow.tsx";
 export { AgentOrb } from "./AgentOrb.tsx";
 export { ThinkingStatus } from "./ThinkingStatus.tsx";

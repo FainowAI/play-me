@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { parseSseChunk } from "../api.ts";
 import { activityForTool } from "../activity.ts";
 import { compatibleKeys, groupBySection, relationLabel, transitionCard, weakestPosition } from "../setview.ts";
-import { applyEvent, initialState, itemsFromTurns, pendingApproval, reducer, selectVersion, splitLabel, type AppState } from "../state.ts";
+import { answersLine, applyEvent, initialState, itemsFromTurns, orderOptions, pendingApproval, pendingQuestions, reducer, selectVersion, splitLabel, type AppState } from "../state.ts";
 import type { PlanRow, ServerEvent, SetDetail, SetVersionDetail, SnapshotTrack, TransitionPlan } from "../types.ts";
 
 // SSE: eventos completos saem, o resto fica
@@ -131,4 +131,60 @@ const version: SetVersionDetail = {
   assert.equal(selectVersion(reducer(s, { type: "view_version", version: 9 }))?.version, 2);
 }
 
-console.log("[ok] web logic: SSE, atividade, reducer, releitura, rótulos, cards");
+// Sprint 6: perguntas do agente (ask_dj → evento `questions`)
+{
+  const ask: Extract<ServerEvent, { type: "questions" }> = {
+    type: "questions",
+    questions_id: "q1",
+    title: "Antes de montar",
+    questions: [
+      { id: "tamanho", text: "Qual o tamanho do set?", header: "Tamanho", options: [{ label: "1h30" }, { label: "1 hora", recommended: true }, { label: "2 horas" }], allow_other: true },
+      { id: "abertura_fechamento", text: "Quer fixar a abertura ou o fechamento?", options: [{ label: "Sem faixa fixa", recommended: true }, { label: "Escolher a abertura" }], allow_other: false },
+    ],
+  };
+  const answers = { tamanho: "1 hora", abertura_fechamento: null };
+  const start = reducer(reducer(initialState, { type: "send", id: "u1", text: "monta um set" }), { type: "event", event: { type: "tool_start", tool: "ask_dj", tool_use_id: "t1", detail: "2 perguntas" } });
+  const s = reducer(start, { type: "event", event: ask });
+  const item = pendingQuestions(s);
+  assert.equal(item?.id, "q1"); // ao vivo vem sem status: pendente
+  assert.equal(item?.answers, null);
+  assert.equal(s.busy, true);
+  assert.equal(s.activity, "idle"); // o turno espera o DJ
+  assert.deepEqual(s.overlay, { kind: "questions" }); // a janela abre sozinha
+  const pill = s.items.find((i) => i.kind === "tool");
+  assert.equal(pill?.kind === "tool" && pill.status, "waiting"); // a pílula espera o DJ em vez de "rodando"
+  const prefixed = reducer(reducer(initialState, { type: "event", event: { type: "tool_start", tool: "mcp__playme__ask_dj", tool_use_id: "t2", detail: "" } }), { type: "event", event: ask });
+  assert.equal(prefixed.items[0]?.kind === "tool" && prefixed.items[0].status, "waiting"); // o prefixo do servidor MCP em processo não atrapalha
+  assert.equal(pendingQuestions(reducer(s, { type: "overlay", overlay: null }))?.id, "q1"); // fechar a janela não perde as perguntas
+  // responder (otimista): sai de pendente e o agente volta a trabalhar
+  const done = reducer(s, { type: "questions_done", questionsId: "q1", status: "answered", answers });
+  assert.equal(pendingQuestions(done), null);
+  assert.equal(done.activity, "composing");
+  const doneItem = done.items.find((i) => i.kind === "questions");
+  assert.equal(doneItem?.kind === "questions" && answersLine(doneItem), "tamanho 1 hora · abertura fechamento pulada");
+  // erro de rede: volta a pendente e a esperar o DJ
+  const back = reducer(done, { type: "questions_done", questionsId: "q1", status: "pending", answers: null });
+  assert.equal(pendingQuestions(back)?.id, "q1");
+  assert.equal(back.activity, "idle");
+  // o turno acaba sem resposta (done, error, queda do stream): ninguém mais espera
+  for (const ended of [reducer(s, { type: "event", event: { type: "done", cost_usd: null } }), reducer(s, { type: "event", event: { type: "error", message: "x" } }), reducer(s, { type: "turn_failed", text: "x" })]) {
+    const q = ended.items.find((i) => i.kind === "questions");
+    assert.equal(pendingQuestions(ended), null);
+    assert.equal(q?.kind === "questions" && q.status, "expired");
+  }
+  // releitura: o turno gravado traz o estado final e as respostas; não pisca como pendente nem abre a janela
+  const turn = (event: ServerEvent) => ({ id: "t1", user_message: "monta", events: [event], cost_usd: null, created_at: "" });
+  const reread = itemsFromTurns([turn({ ...ask, status: "answered", answers })]);
+  assert.deepEqual(reread.map((i) => i.kind), ["user", "questions"]);
+  const rereadItem = reread[1];
+  assert.equal(rereadItem?.kind === "questions" && rereadItem.status, "answered");
+  assert.equal(rereadItem?.kind === "questions" && rereadItem.answers?.tamanho, "1 hora");
+  assert.equal(pendingQuestions({ ...initialState, items: reread }), null);
+  const skipped = itemsFromTurns([turn({ ...ask, status: "skipped", answers: { tamanho: null, abertura_fechamento: null } })])[1];
+  assert.equal(skipped?.kind === "questions" && skipped.status, "skipped");
+  assert.equal(reducer(reducer(initialState, { type: "send", id: "u", text: "x" }), { type: "event", event: { ...ask, status: "answered", answers } }).overlay, null);
+  // a janela mostra a opção recomendada primeiro, sem mexer na ordem das outras
+  assert.deepEqual(orderOptions(ask.questions[0]?.options ?? []).map((o) => o.label), ["1 hora", "1h30", "2 horas"]);
+}
+
+console.log("[ok] web logic: SSE, atividade, reducer, releitura, rótulos, cards, perguntas");

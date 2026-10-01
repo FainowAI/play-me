@@ -6,6 +6,7 @@
  */
 import type { CSSProperties, ReactNode } from "react";
 import type { Activity } from "../../activity.ts";
+import type { Question } from "../../types.ts";
 
 export type Tone = "ok" | "info" | "warn" | "danger" | "neutral";
 export type SectionType = "intro" | "groove" | "build" | "drop" | "break" | "outro";
@@ -139,6 +140,15 @@ export interface ApprovalGateProps {
   onApprove?: () => void;
   onReview?: () => void; // "Revisar ordem" = rejeitar: o set volta a rascunho
   disabled?: boolean; // clique já enviado
+}
+
+/** Sprint 6: conteúdo da janela de perguntas do agente (ask_dj); a shell a põe dentro do Overlay (kind "window"), que dá o padding. */
+export interface QuestionsWindowProps {
+  title: string | null; // título geral do pedido (eyebrow); cada pergunta pode trazer ainda o header
+  questions: Question[];
+  /** Chamado uma vez, na última pergunta: uma resposta por pergunta (label da opção, texto de "Outra opção" ou null = pulada). */
+  onSubmit: (answers: Record<string, string | null>) => void;
+  disabled?: boolean; // envio em andamento
 }
 
 export interface AgentOrbProps {

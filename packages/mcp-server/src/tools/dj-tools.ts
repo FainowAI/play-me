@@ -3,9 +3,10 @@ import { z } from "zod";
 import { JEV_COMPARE_PAIRS, LIMITS } from "../constants.js";
 import { formatCamelot, musicalName, parseKey } from "../services/camelot.js";
 import { getContext } from "../services/context.js";
-import { avoidRecent, buildReport, buildSet, normalizeWeights, scoreTransition } from "../services/dj-engine.js";
+import { avoidRecent, buildReport, buildSet, normalizeWeights, scoreTransition, type BuildOptions } from "../services/dj-engine.js";
 import { fail, render, setToMarkdown } from "../services/format.js";
-import { compareTransitions, decideWithJev, jevFromEnv, type Comparison } from "../services/jev.js";
+import { compareTransitions, decideWithJev, jevFromEnv, type Comparison, type JevAnswer } from "../services/jev.js";
+import { buildSetWithJev, passKey } from "../services/jev-order.js";
 import { mixGuideStep, planTransition } from "../services/planner.js";
 import { formatError, parseSpotifyId, resolvePlaylistId } from "../services/spotify-client.js";
 import { type MixGuideStep, ResponseFormat, type SetResult, type TrackAnalysis } from "../types.js";
@@ -93,13 +94,24 @@ const withLabels = (found: TrackAnalysis[], names: Map<string, string>): TrackAn
 const listNames = (ids: string[], names: Map<string, string>, cap = Infinity): string =>
   ids.slice(0, cap).map((id) => names.get(id) ?? id).join("; ") + (ids.length > cap ? ` e mais ${ids.length - cap}` : "");
 
-/** Preenche result.plans (um por passagem); se o planejador falhar, avisa e segue sem planos. */
-function attachPlans(result: SetResult, tracks: TrackAnalysis[]): void {
+/** Respostas do Jev por passagem (P16, chave de passKey) e o limiar com que elas decidem o tipo. */
+export interface JevPlans {
+  answers: ReadonlyMap<string, JevAnswer>;
+  minConfidence: number;
+}
+
+/**
+ * Preenche result.plans (um por passagem); se o planejador falhar, avisa e segue sem planos.
+ * Com `jev` (P16), a passagem que tem resposta do Jev passa por decideWithJev (confiança alta ou baixa); sem resposta, o plano das regras como sempre.
+ */
+export function attachPlans(result: SetResult, tracks: TrackAnalysis[], jev?: JevPlans): void {
   const byId = new Map(tracks.map((track) => [track.track_id, track]));
   try {
-    result.plans = result.transitions.map((t) =>
-      planTransition(byId.get(t.from_id) as TrackAnalysis, byId.get(t.to_id) as TrackAnalysis),
-    );
+    result.plans = result.transitions.map((t) => {
+      const rules = planTransition(byId.get(t.from_id) as TrackAnalysis, byId.get(t.to_id) as TrackAnalysis);
+      const answer = jev?.answers.get(passKey(t.from_id, t.to_id));
+      return jev && answer ? decideWithJev(rules, answer, jev.minConfidence) : rules;
+    });
   } catch (error) {
     result.warnings.push(`Plano das passagens indisponível: ${formatError(error)}`);
   }
@@ -118,6 +130,36 @@ function compareToMarkdown(comparison: Comparison, minConfidence: number): strin
     ),
     ...(comparison.errors.length ? ["", "## Erros", ...comparison.errors.map((error) => `- ${error}`)] : []),
   ].join("\n");
+}
+
+/**
+ * P16: o feixe das regras sempre roda (valida as opções, é a referência e o fallback). Com o Jev (`use_jev`, padrão: chave presente)
+ * a ordem sai dele passo a passo (jev-order.ts). Sem chave, ou se a montagem com o Jev falhar, valem as regras e `jev` diz o motivo.
+ */
+async function orderSet(
+  tracks: TrackAnalysis[],
+  options: BuildOptions,
+  useJev: boolean | undefined,
+): Promise<{ result: SetResult; jev?: JevPlans }> {
+  const rules = buildSet(tracks, options);
+  const jev = jevFromEnv(getContext().config.dataDir);
+  if (!(useJev ?? jev.available())) {
+    rules.jev = { used: false, reason: useJev === false ? "desligado (use_jev: false)" : "sem TYPESAFE_API_KEY" };
+    return { result: rules };
+  }
+  if (!jev.available()) {
+    rules.jev = { used: false, reason: "sem TYPESAFE_API_KEY" };
+    rules.warnings.push("Jev não consultado: sem TYPESAFE_API_KEY no .env do backend; as regras ordenaram o set.");
+    return { result: rules };
+  }
+  try {
+    const { result, answers } = await buildSetWithJev(tracks, options, rules, jev);
+    return { result, jev: { answers, minConfidence: jev.minConfidence } };
+  } catch (error) {
+    rules.jev = { used: false, reason: `falha ao montar a ordem com o Jev: ${formatError(error)}` };
+    rules.warnings.push(`Jev: a ordem não foi montada (${formatError(error)}); as regras ordenaram o set.`);
+    return { result: rules };
+  }
 }
 
 export function registerDjTools(server: McpServer): void {
@@ -269,9 +311,10 @@ Args:
   - exclude (string[], opcional): faixas a deixar fora
   - avoid (string[], opcional): faixas a evitar quando der, ex.: as dos últimos sets. Só com duration_minutes/max_tracks; saem do pool se sobrar pelo menos metade das faixas analisadas (mín. 10), senão ficam e o aviso diz
   - weights (opcional), beam_width (opcional, 4-96)
+  - use_jev (boolean, padrão: true se houver TYPESAFE_API_KEY): o Jev (TypeSafe) escolhe a ordem passo a passo entre as 5 melhores candidatas das regras e decide o tipo de cada passagem; sem chave, com erro ou com confiança abaixo de JEV_MIN_CONFIDENCE valem as regras. Recebe só números. É uma chamada de API por faixa (set grande demora): false para só regras
   - response_format
 
-Retorna: ordem com seção (abertura, construção, crescimento, pico, clímax, encerramento), cada transição com relação harmônica, tipo (segura/criativa/arriscada), diferença de BPM, energia e motivo, pontos fracos, faixas que atrapalham, perfil de faixa-ponte para cada lacuna (Camelot, BPM e energia alvo) e avisos. Com duration_minutes ou max_tracks traz também pool_size (faixas analisadas consideradas), avoided (faixas de avoid deixadas fora) e duration_ms (duração somada do set; null se o Spotify não informou alguma). Energia marcada com * (energy_estimated) é estimativa da ReccoBeats, não dado do Mixar.
+Retorna: ordem com seção (abertura, construção, crescimento, pico, clímax, encerramento), cada transição com relação harmônica, tipo (segura/criativa/arriscada), diferença de BPM, energia e motivo, pontos fracos, faixas que atrapalham, perfil de faixa-ponte para cada lacuna (Camelot, BPM e energia alvo) e avisos. Com duration_minutes ou max_tracks traz também pool_size (faixas analisadas consideradas), avoided (faixas de avoid deixadas fora) e duration_ms (duração somada do set; null se o Spotify não informou alguma). Energia marcada com * (energy_estimated) é estimativa da ReccoBeats, não dado do Mixar. O campo jev traz { used, chosen, fallback, calls, errors, latency_ms, rules_average_score } (passos que o Jev escolheu, passos que ficaram com as regras e a nota média só das regras) ou { used: false, reason }.
 
 Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera playlists: mostre a ordem ao usuário antes de usar spotify_create_playlist_from_order.`,
       inputSchema: z
@@ -289,6 +332,10 @@ Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera
             .describe("Faixas a evitar quando der (ex.: as dos últimos sets). Só com duration_minutes/max_tracks; saem do pool se sobrar pelo menos metade das analisadas (mín. 10)"),
           weights: weightsSchema,
           beam_width: z.number().int().min(4).max(96).optional(),
+          use_jev: z
+            .boolean()
+            .optional()
+            .describe("O Jev escolhe a ordem passo a passo e decide o tipo de cada passagem. Padrão: ligado quando há TYPESAFE_API_KEY; false = só regras"),
           duration_minutes: z
             .number()
             .int()
@@ -308,7 +355,7 @@ Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera
         .strict(),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    async ({ playlist, track_ids, curve, start_track, end_track, exclude, avoid, weights, beam_width, duration_minutes, max_tracks, response_format }) => {
+    async ({ playlist, track_ids, curve, start_track, end_track, exclude, avoid, weights, beam_width, use_jev, duration_minutes, max_tracks, response_format }) => {
       try {
         if (duration_minutes !== undefined && max_tracks !== undefined) return fail("Informe duration_minutes ou max_tracks, não os dois.");
         const selecting = duration_minutes !== undefined || max_tracks !== undefined;
@@ -332,16 +379,20 @@ Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera
           );
         }
         const tracks = withLabels(found, names);
-        const result = buildSet(tracks, {
-          curve,
-          weights,
-          startTrackId: start_track ? parseSpotifyId(start_track, "track") : undefined,
-          endTrackId: end_track ? parseSpotifyId(end_track, "track") : undefined,
-          beamWidth: beam_width,
-          maxTracks: max_tracks,
-          targetDurationMs: duration_minutes === undefined ? undefined : duration_minutes * 60_000,
-          durations,
-        });
+        const { result, jev } = await orderSet(
+          tracks,
+          {
+            curve,
+            weights,
+            startTrackId: start_track ? parseSpotifyId(start_track, "track") : undefined,
+            endTrackId: end_track ? parseSpotifyId(end_track, "track") : undefined,
+            beamWidth: beam_width,
+            maxTracks: max_tracks,
+            targetDurationMs: duration_minutes === undefined ? undefined : duration_minutes * 60_000,
+            durations,
+          },
+          use_jev,
+        );
         if (missing.length) {
           result.warnings.unshift(`${missing.length} faixa(s) sem análise ficaram fora do set: ${listNames(missing, names, cap)}.`);
         }
@@ -351,7 +402,7 @@ Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera
         if (result.order.some((position) => position.energy === null)) {
           result.warnings.push("Há faixas sem energia informada: a curva usa nota neutra para elas.");
         }
-        attachPlans(result, tracks);
+        attachPlans(result, tracks, jev);
         const data = { ...result, avoided: soft.avoided, ordered_track_ids: result.order.map((position) => position.track_id) };
         return render(response_format, () => setToMarkdown(result), data as unknown as Record<string, unknown>);
       } catch (error) {

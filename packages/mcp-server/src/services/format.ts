@@ -1,5 +1,5 @@
 import { CHARACTER_LIMIT } from "../constants.js";
-import type { SetPosition, SetResult, SpotifyTrackSummary, TrackAnalysis } from "../types.js";
+import type { JevSetInfo, SetPosition, SetResult, SpotifyTrackSummary, TrackAnalysis } from "../types.js";
 import { ResponseFormat } from "../types.js";
 
 export interface ToolResult {
@@ -52,10 +52,17 @@ const TYPE_PT = { blend: "blend", bass_swap: "troca de grave", filter: "filtro",
 /** "*" marca energia estimada (P12: derivada do energy da ReccoBeats), não informada pelo Mixar ou pelo usuário. */
 const star = (position?: SetPosition): string => (position?.energy_estimated ? "*" : "");
 
+/** P16: "Jev: escolheu X de Y passos (Z pelas regras) · só regras: nota 0,84"; Y = passos com escolha, a nota das regras com vírgula (texto do contrato). */
+function jevLine(jev: Extract<JevSetInfo, { used: true }>): string {
+  const rulesScore = String(jev.rules_average_score).replace(".", ",");
+  return `Jev: escolheu ${jev.chosen} de ${jev.chosen + jev.fallback} passos (${jev.fallback} pelas regras) · só regras: nota ${rulesScore}`;
+}
+
 export function setToMarkdown(result: SetResult): string {
   const lines: string[] = [];
   const minutes = typeof result.duration_ms === "number" ? ` · ${Math.round(result.duration_ms / 60_000)} min` : "";
   lines.push(`# Set proposto · ${result.order.length} faixas${minutes} · curva "${result.curve}" · nota média ${result.average_score}`);
+  if (result.jev?.used) lines.push(jevLine(result.jev)); // sem Jev (sem chave, use_jev: false) o texto segue como antes
   lines.push("");
 
   let currentSection = "";

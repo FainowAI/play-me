@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { JEV_DEFAULT_MIN_CONFIDENCE, JEV_MODEL, JEV_TIMEOUT_MS, JEV_URL } from "../constants.js";
-import type { JevInsight, TrackAnalysis, TransitionPlan, TransitionType } from "../types.js";
+import type { CamelotKey, JevInsight, TrackAnalysis, TransitionPlan, TransitionType } from "../types.js";
 import { harmonicMatch, parseKey } from "./camelot.js";
 import { labelOf, normalizeWeights, scoreTransition, type ScoreContext } from "./dj-engine.js";
 import { RateLimitError, realHttp, type HttpDeps } from "./metadata/http.js";
@@ -40,6 +40,33 @@ const QUESTIONS = {
   },
 };
 
+/**
+ * Ordem do set (P16): `next_track` é um `choice` entre as candidatas "1".."k" (k = 2 a JEV_ORDER.candidates) de state.candidates.
+ * Os critérios são estáticos por chave; a abertura (sem faixa atual) tem outro enunciado.
+ */
+const NEXT_INSTRUCTIONS = {
+  next: "Escolha qual candidata de state.candidates toca depois de state.current no set de DJ, usando só os números do state: energia perto de state.target_energy, harmonia segura (mesmo tom, adjacente ou relativa), diferença de BPM pequena e boa nota das regras (rules_score).",
+  open: "Escolha qual candidata de state.candidates abre o set de DJ, usando só os números do state: energia perto de state.target_energy e BPM confortável para começar; rules_score é a nota das regras.",
+};
+const nextKeys = (count: number): string[] => Array.from({ length: count }, (_, i) => String(i + 1));
+const nextQuestion = (count: number, opening: boolean) => ({
+  type: "choice",
+  instructions: opening ? NEXT_INSTRUCTIONS.open : NEXT_INSTRUCTIONS.next,
+  criteria: Object.fromEntries(nextKeys(count).map((key) => [key, `Tocar a candidata ${key} de state.candidates.`])),
+});
+
+/** A passagem anterior vai na mesma chamada (state.passage, o state de askTransition): mesmos critérios, enunciado que aponta para ela. */
+const PASSAGE_QUESTIONS = {
+  transition_type: {
+    ...QUESTIONS.transition_type,
+    instructions: "Escolha o tipo de transição de DJ para sair da faixa A e entrar na faixa B, usando só os números de state.passage.",
+  },
+  pair_score: {
+    ...QUESTIONS.pair_score,
+    instructions: "Dê a nota de encaixe de A em B para mixar, considerando BPM, Camelot e energia de state.passage.",
+  },
+};
+
 /** Teste de conexão (Sprint 5, Q1): a pergunta mais barata possível; só importa o Jev responder, não o que ele responde. */
 const PING_QUESTIONS = { ping: { type: "noul", instructions: "O state é um teste de conexão?" } };
 const PING_TIMEOUT_MS = 5_000;
@@ -58,10 +85,32 @@ export const isJevAnswer = (result: JevResult): result is JevAnswer => !("error"
 
 export type PingResult = { ok: true; model: string; latency_ms: number } | { ok: false; error: string };
 
+/** Um passo da ordem (P16): as candidatas já filtradas pelas regras (a das regras primeiro) e a faixa atual; `previous` leva a passagem anterior na mesma chamada. */
+export interface NextStep {
+  position: number; // 1-based
+  total: number;
+  target_energy: number;
+  current: TrackAnalysis | null; // null na abertura
+  candidates: { track: TrackAnalysis; rules_score: number }[]; // 2 a JEV_ORDER.candidates
+  previous?: TrackAnalysis; // faixa anterior à atual: a passagem previous → current vai junto
+}
+export interface NextAnswer {
+  choice: number; // 1..k, índice em `candidates` + 1
+  confidence: number;
+  pass: JevResult | null; // resposta da passagem anterior (null se não foi perguntada); falha aqui não invalida a escolha
+  latency_ms: number;
+  model: string;
+}
+export type NextResult = NextAnswer | JevFailure;
+
+export const isNextAnswer = (result: NextResult): result is NextAnswer => !("error" in result);
+
 export interface Jev {
   minConfidence: number;
   available(): boolean;
   askTransition(a: TrackAnalysis, b: TrackAnalysis, rules: TransitionPlan): Promise<JevResult>;
+  /** P16: qual das candidatas toca agora; o log da chamada leva `kind: "next_track"`. Nunca lança. */
+  askNext(step: NextStep): Promise<NextResult>;
   ping(): Promise<PingResult>;
 }
 
@@ -79,30 +128,74 @@ interface RawAnswer {
 }
 interface RawBody {
   model?: string;
-  answers?: { transition_type?: RawAnswer; pair_score?: RawAnswer };
+  answers?: { transition_type?: RawAnswer; pair_score?: RawAnswer; next_track?: RawAnswer };
   usage?: { input_tokens?: number; output_tokens?: number };
 }
 
 const round = (value: number, digits = 2): number => Math.round(value * 10 ** digits) / 10 ** digits;
+
+const sideOf = (track: TrackAnalysis, key: CamelotKey) => ({
+  bpm: track.bpm,
+  camelot_number: key.number,
+  camelot_letter: key.letter,
+  energy: track.energy ?? null,
+});
 
 /** Regra 8: só números e rótulos do planejador. Nunca o TransitionPlan inteiro (from/to são IDs do Spotify). */
 function stateOf(a: TrackAnalysis, b: TrackAnalysis, rules: TransitionPlan) {
   const keyA = parseKey(a.camelot);
   const keyB = parseKey(b.camelot);
   if (!keyA || !keyB) return null;
-  const side = (track: TrackAnalysis, key: typeof keyA) => ({
-    bpm: track.bpm,
-    camelot_number: key.number,
-    camelot_letter: key.letter,
-    energy: track.energy ?? null,
-  });
   return {
-    from: side(a, keyA),
-    to: side(b, keyB),
+    from: sideOf(a, keyA),
+    to: sideOf(b, keyB),
     harmonic: { relation: rules.harmonic.relation, class: rules.harmonic.class, score: harmonicMatch(keyA, keyB).score },
     bpm_diff: rules.tempo.diff,
     bpm_mode: rules.tempo.mode,
     energy_delta: rules.energy_delta,
+  };
+}
+
+const keyOf = (track: TrackAnalysis): CamelotKey => {
+  const key = parseKey(track.camelot);
+  if (!key) throw new Error("Tom inválido");
+  return key;
+};
+
+/** stateOf da passagem a → b com o plano das regras; tom inválido lança (askNext captura e devolve { error }). */
+function passState(a: TrackAnalysis, b: TrackAnalysis) {
+  const state = stateOf(a, b, planTransition(a, b));
+  if (!state) throw new Error("Tom inválido");
+  return state;
+}
+
+/**
+ * Regra 8 também na ordem: números e rótulos do planejador, nunca ID, título ou artista. As candidatas vão numeradas por chave
+ * ("1".."k"), as mesmas do `choice`; na abertura (sem faixa atual) a relação com a faixa atual fica null. `passage` = state de askTransition.
+ */
+function nextStateOf({ position, total, target_energy, current, candidates, previous }: NextStep) {
+  return {
+    position,
+    total,
+    target_energy,
+    current: current ? sideOf(current, keyOf(current)) : null,
+    candidates: Object.fromEntries(
+      candidates.map(({ track, rules_score }, i) => {
+        const relation = current ? passState(current, track) : null;
+        return [
+          String(i + 1),
+          {
+            ...sideOf(track, keyOf(track)),
+            harmonic: relation?.harmonic ?? null,
+            bpm_diff: relation?.bpm_diff ?? null,
+            bpm_mode: relation?.bpm_mode ?? null,
+            energy_delta: relation?.energy_delta ?? null,
+            rules_score,
+          },
+        ];
+      }),
+    ),
+    ...(previous && current ? { passage: passState(previous, current) } : {}),
   };
 }
 
@@ -118,6 +211,20 @@ function parseAnswer(body: RawBody, latency: number): JevResult {
     type_confidence: t.confidence,
     score: round(Math.min(5, Math.max(1, s.score + 1))),
     score_confidence: s.confidence,
+    latency_ms: latency,
+    model: body.model ?? JEV_MODEL,
+  };
+}
+
+/** A escolha vale por si: a passagem anterior (se perguntada) é lida à parte e uma resposta ruim dela não invalida o passo. */
+function parseNext(body: RawBody, latency: number, count: number, withPass: boolean): NextResult {
+  const answer = body.answers?.next_track;
+  const index = nextKeys(count).indexOf(String(answer?.choice));
+  if (index < 0 || typeof answer?.confidence !== "number") return { error: "Resposta do Jev fora do formato esperado (next_track)." };
+  return {
+    choice: index + 1,
+    confidence: answer.confidence,
+    pass: withPass ? parseAnswer(body, latency) : null,
     latency_ms: latency,
     model: body.model ?? JEV_MODEL,
   };
@@ -167,13 +274,15 @@ export async function ping(http: HttpDeps = realHttp, apiKey: string | undefined
 
 export function createJev({ apiKey, minConfidence = JEV_DEFAULT_MIN_CONFIDENCE, http = realHttp, logPath }: JevOptions): Jev {
   const key = apiKey?.trim() ?? "";
-  const post = (state: unknown): Promise<RawBody> =>
-    postJev(http, key, { state, model: JEV_MODEL, questions: QUESTIONS }, JEV_TIMEOUT_MS);
-
-  async function exchange(state: unknown, started: number): Promise<{ body: RawBody | null; result: JevResult }> {
+  async function exchange<R>(
+    state: unknown,
+    questions: unknown,
+    started: number,
+    parse: (body: RawBody, latency: number) => R | JevFailure,
+  ): Promise<{ body: RawBody | null; result: R | JevFailure }> {
     try {
-      const body = await post(state);
-      return { body, result: parseAnswer(body, http.now() - started) };
+      const body = await postJev(http, key, { state, model: JEV_MODEL, questions }, JEV_TIMEOUT_MS);
+      return { body, result: parse(body, http.now() - started) };
     } catch (error) {
       if (error instanceof RateLimitError) return { body: null, result: { error: error.message, backoff: true } };
       return { body: null, result: { error: error instanceof Error ? error.message : String(error) } };
@@ -194,22 +303,76 @@ export function createJev({ apiKey, minConfidence = JEV_DEFAULT_MIN_CONFIDENCE, 
     const state = stateOf(a, b, rules);
     if (!state) return { error: "Tom inválido: o Jev não foi consultado." };
     const started = http.now();
-    const { body, result } = await exchange(state, started);
-    log({
-      at: new Date(http.now()).toISOString(),
-      state_sha256: createHash("sha256").update(JSON.stringify(state)).digest("hex"),
+    const { body, result } = await exchange(state, QUESTIONS, started, parseAnswer);
+    logCall({
+      state,
       questions: QUESTIONS,
-      answers: body?.answers ?? null,
+      body,
       confidence: isJevAnswer(result) ? { transition_type: result.type_confidence, pair_score: result.score_confidence } : null,
-      latency_ms: http.now() - started,
-      model: body?.model ?? null,
-      usage: body?.usage ?? null,
-      ...(isJevAnswer(result) ? {} : { error: result.error }),
+      error: isJevAnswer(result) ? undefined : result.error,
+      started,
     });
     return result;
   }
 
-  return { minConfidence, available: () => key !== "", askTransition, ping: () => ping(http, key) };
+  /** A linha do log de uma chamada; `kind` só nas chamadas da ordem (P16), as de par seguem sem ele. */
+  function logCall(call: {
+    kind?: string;
+    state: unknown;
+    questions: unknown;
+    body: RawBody | null;
+    confidence: Record<string, number> | null;
+    error?: string;
+    started: number;
+  }): void {
+    log({
+      at: new Date(http.now()).toISOString(),
+      ...(call.kind ? { kind: call.kind } : {}),
+      state_sha256: createHash("sha256").update(JSON.stringify(call.state)).digest("hex"),
+      questions: call.questions,
+      answers: call.body?.answers ?? null,
+      confidence: call.confidence,
+      latency_ms: http.now() - call.started,
+      model: call.body?.model ?? null,
+      usage: call.body?.usage ?? null,
+      ...(call.error === undefined ? {} : { error: call.error }),
+    });
+  }
+
+  async function askNext(step: NextStep): Promise<NextResult> {
+    if (key === "") return { error: "Sem TYPESAFE_API_KEY: o Jev não foi consultado." };
+    const count = step.candidates.length;
+    if (count < 2) return { error: "A escolha pede 2 candidatas ou mais: o Jev não foi consultado." };
+    let state: ReturnType<typeof nextStateOf>;
+    try {
+      state = nextStateOf(step);
+    } catch {
+      return { error: "Tom inválido: o Jev não foi consultado." };
+    }
+    const withPass = step.previous !== undefined && step.current !== null;
+    const questions = { next_track: nextQuestion(count, step.current === null), ...(withPass ? PASSAGE_QUESTIONS : {}) };
+    const started = http.now();
+    const { body, result } = await exchange(state, questions, started, (raw, latency) => parseNext(raw, latency, count, withPass));
+    logCall({
+      kind: "next_track",
+      state,
+      questions,
+      body,
+      confidence: isNextAnswer(result)
+        ? {
+            next_track: result.confidence,
+            ...(result.pass && isJevAnswer(result.pass)
+              ? { transition_type: result.pass.type_confidence, pair_score: result.pass.score_confidence }
+              : {}),
+          }
+        : null,
+      error: isNextAnswer(result) ? undefined : result.error,
+      started,
+    });
+    return result;
+  }
+
+  return { minConfidence, available: () => key !== "", askTransition, askNext, ping: () => ping(http, key) };
 }
 
 /** JEV_MIN_CONFIDENCE válido é um número em (0, 1]; vazio ou fora disso vale o padrão (0,7). */

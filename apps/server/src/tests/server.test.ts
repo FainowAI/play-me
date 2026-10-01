@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuthRequiredError } from "spotify-dj-mcp-server/dist/services/auth.js";
 import type { MixGuideStep } from "spotify-dj-mcp-server/dist/types.js";
-import { ApprovalWaiter } from "../approvals.js";
+import { ApprovalWaiter, Waiter, type Answers } from "../approvals.js";
 import { createJevStatus } from "../jev-status.js";
 import { openRepo, type Repo } from "../repo.js";
 import { createHttpServer, type HttpDeps } from "../server.js";
@@ -46,7 +46,8 @@ const PLAYLISTS: Playlist[] = [{ id: "pl1", name: "Eletro", total: 557, url: "ht
 let playlistsImpl: () => Promise<Playlist[]> = async () => PLAYLISTS;
 const settingsFile = join(dir, "settings.json");
 const settings = new SettingsStore(settingsFile);
-const extra = { status: () => STATUS, playlists: () => playlistsImpl(), settings };
+const questions = new Waiter<Answers | null>(null); // ask_dj
+const extra = { status: () => STATUS, playlists: () => playlistsImpl(), settings, questions };
 
 const waiter = new ApprovalWaiter();
 const listen = async (deps: HttpDeps) => {
@@ -94,6 +95,36 @@ try {
   // ninguém esperando (restart/desconexão): expira como rejeitada
   assert.equal((await post("/api/approvals/a2", { decision: "approved" })).status, 409);
   assert.equal(approvals.get("a2")?.status, "rejected");
+
+  // perguntas do ask_dj: 200 respondida ou pulada, 400 corpo inválido (a espera segue), 404 id que nunca foi pergunta, 409 sem ninguém esperando
+  const QID = "0b9c7a52-6f0e-4a2b-9d8e-5f3a1c2d4e6f"; // formato do randomUUID
+  const answer = (id: string, body: unknown) => post(`/api/questions/${id}`, body);
+  let asking = questions.wait(QID);
+  const invalidAnswers: unknown[] = [{}, { answers: null }, { answers: [] }, { answers: "1 hora" }, { answers: { tamanho: 60 } }, { answers: { tamanho: true } }, { answers: { tamanho: ["1 hora"] } }, { answers: { tamanho: "x".repeat(201) } }];
+  for (const body of invalidAnswers) assert.equal((await answer(QID, body)).status, 400, JSON.stringify(body).slice(0, 60));
+  assert.equal((await fetch(`${base}/api/questions/${QID}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" })).status, 400); // JSON quebrado
+  assert.equal((await answer("%E0%A4%A", { answers: {} })).status, 400); // id com % malformado
+  assert.equal(questions.has(QID), true); // pedido inválido não consome a pergunta
+  r = await answer(QID, { answers: { tamanho: "1 hora", curva: null, outra: "x".repeat(200) } }); // 200 caracteres passa
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { status: "answered" });
+  assert.deepEqual(await asking, { tamanho: "1 hora", curva: null, outra: "x".repeat(200) }); // o turno recebe as respostas como vieram
+  assert.equal((await answer(QID, { answers: { tamanho: "2 horas" } })).status, 409); // já respondida
+  for (const answers of [{ tamanho: null, curva: null }, {}, { tamanho: "   " }]) {
+    asking = questions.wait(QID);
+    r = await answer(QID, { answers });
+    assert.deepEqual([r.status, await r.json()], [200, { status: "skipped" }], JSON.stringify(answers)); // tudo null, ausente ou vazio: pulada
+    await asking;
+  }
+  assert.equal((await answer("nao-existe", { answers: {} })).status, 404); // nunca foi uma pergunta
+  assert.equal((await answer("0b9c7a52-6f0e-4a2b-9d8e-5f3a1c2d4e70", { answers: {} })).status, 409); // formato de pergunta e ninguém esperando (restart ou desconexão)
+  const gone = new AbortController();
+  const dropped = questions.wait(QID, gone.signal);
+  gone.abort(); // o cliente do chat desconectou: a espera vira null e a pergunta deixa de aceitar resposta
+  assert.equal(await dropped, null);
+  assert.equal((await answer(QID, { answers: { tamanho: "1 hora" } })).status, 409);
+  assert.equal((await fetch(`${base}/api/questions/${QID}`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ answers: {} }) })).status, 415); // sem JSON (CSRF)
+  assert.equal((await fetch(`${base}/api/questions/${QID}`)).status, 404); // só POST
 
   r = await fetch(`${base}/api/sessions`, { headers: { Origin: "http://localhost:5173" } });
   assert.equal(r.headers.get("access-control-allow-origin"), "http://localhost:5173");
@@ -357,4 +388,4 @@ try {
     await new Promise((r) => s.close(r));
   }
 }
-console.log("[ok] http: sessions, chat SSE, validações, approvals, CORS, status, playlists, configurações, sessão com turnos, set com snapshot e guia, notas das passagens, status do Jev, 404");
+console.log("[ok] http: sessions, chat SSE, validações, approvals, perguntas do ask_dj, CORS, status, playlists, configurações, sessão com turnos, set com snapshot e guia, notas das passagens, status do Jev, 404");

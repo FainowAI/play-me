@@ -2,11 +2,13 @@
  * Agente: Claude Agent SDK + MCP spotify-dj, com o gate de aprovação.
  * CONTRATO: runChat é usada pela trilha HTTP; a implementação é da trilha agente.
  */
-import { query, type PermissionResult, type ThinkingConfig } from "@anthropic-ai/claude-agent-sdk";
+import { randomUUID } from "node:crypto";
+import { createSdkMcpServer, query, tool as defineTool, type PermissionResult, type ThinkingConfig } from "@anthropic-ai/claude-agent-sdk";
 import { AnalysisStore } from "spotify-dj-mcp-server/dist/services/analysis-store.js";
 import { sectionFor, targetEnergy } from "spotify-dj-mcp-server/dist/services/dj-engine.js";
 import type { CurvePreset, SetPosition, TrackAnalysis } from "spotify-dj-mcp-server/dist/types.js";
-import type { ApprovalWaiter } from "./approvals.js";
+import { z } from "zod";
+import { answersStatus, cleanAnswer, type Answers, type ApprovalWaiter, type Waiter } from "./approvals.js";
 import type { Repo } from "./repo.js";
 import type { SettingsStore } from "./settings.js";
 import type { PlanInput, ServerEvent, SetSnapshot, SnapshotTrack, Weights } from "./types.js";
@@ -14,6 +16,8 @@ import type { PlanInput, ServerEvent, SetSnapshot, SnapshotTrack, Weights } from
 export interface ChatDeps {
   repo: Repo;
   waiter: ApprovalWaiter;
+  /** Esperas do ask_dj: a rota POST /api/questions/:id resolve com as respostas; abort do turno = null (pulada). */
+  questions: Waiter<Answers | null>;
   /** Caminho absoluto de packages/mcp-server/dist/index.js. */
   mcpServerPath: string;
   /** Variáveis repassadas ao MCP (SPOTIFY_CLIENT_ID, SPOTIFY_REDIRECT_URI, SPOTIFY_DJ_DATA_DIR, TYPESAFE_API_KEY, JEV_MIN_CONFIDENCE…). */
@@ -34,6 +38,9 @@ export interface ChatDeps {
 }
 
 const MCP_PREFIX = "mcp__spotify-dj__";
+const ASK_TOOL = "mcp__playme__ask_dj"; // servidor MCP em processo "playme", criado por rodada do turno em runChat
+/** Nome curto da ferramenta (sem o prefixo do servidor MCP) nos eventos e no detalhe. */
+const TOOL_PREFIX = /^mcp__(?:spotify-dj|playme)__/;
 const CREATE_TOOL = `${MCP_PREFIX}spotify_create_playlist_from_order`;
 const BUILD_TOOL = `${MCP_PREFIX}dj_build_set`;
 const RECENT_SETS = 3; // P17: quantos sets anteriores o set novo evita repetir
@@ -42,12 +49,15 @@ const SYSTEM_PROMPT = `Você é o assistente de DJ do Play.Me. Responda sempre e
 Use as ferramentas do spotify-dj para ler playlists, consultar BPM e tom, montar e avaliar sets.
 Nunca invente BPM nem tom: use só o que as ferramentas devolvem. Quando o tom estiver "a confirmar no Mixar", avise o usuário.
 Mostre o plano de transições e o guia do Mix quando fizer sentido.
-Se o usuário pedir uma duração ("1h30", "2 horas"), passe duration_minutes em dj_build_set (1h30 = 90); se pedir uma quantidade ("20 faixas"), passe max_tracks; sem pedido, não passe nenhum dos dois. Com duration_minutes ou max_tracks o servidor preenche avoid com as faixas dos últimos sets, para o set novo não repetir as mesmas músicas; passe avoid: [] só se o usuário pedir para repetir faixas de sets anteriores. Só use transition_plan com use_jev: true ou jev_compare quando o usuário pedir o Jev.
+Se o usuário pedir uma duração ("1h30", "2 horas"), passe duration_minutes em dj_build_set (1h30 = 90); se pedir uma quantidade ("20 faixas"), passe max_tracks; sem pedido, não passe nenhum dos dois. Com duration_minutes ou max_tracks o servidor preenche avoid com as faixas dos últimos sets, para o set novo não repetir as mesmas músicas; passe avoid: [] só se o usuário pedir para repetir faixas de sets anteriores. O Jev entra em todo set automaticamente (dj_build_set já o usa): nunca pergunte se deve usar o Jev. Depois de montar, diga em uma frase quantos passos o Jev escolheu e quantos ficaram com as regras (campo jev do resultado).
+Antes do primeiro dj_build_set de um pedido, se faltar tamanho (duração ou quantidade), curva ou a playlist de origem, chame ask_dj UMA vez, só com as perguntas que faltam entre estas quatro: tamanho (id "tamanho"; opções 1 hora, 1h30 e 2 horas; allow_other para minutos ou quantidade), curva (id "curva"; opções clássica, peak time, warm up e sunrise), abertura e fechamento (id "abertura_fechamento"; opções sem faixa fixa, escolher a abertura e escolher o fechamento; allow_other com o nome da faixa) e playlist (id "playlist"; só se o pedido não nomear a playlist: use spotify_list_my_playlists, ofereça as 3 com mais faixas, sem as [DJ MIX], com o total de faixas na description; allow_other). Marque recommended: true em 1 hora, clássica e sem faixa fixa, e nunca escreva "Recomendado" no label (a tela acrescenta).
+A resposta de cada pergunta é o texto da opção, o que o usuário digitou em "Outra opção" ou null se ele pulou: converta o tamanho em duration_minutes ou max_tracks. Tamanho pulado = playlist inteira (sem duration_minutes nem max_tracks); curva pulada = classic; abertura e fechamento pulados = nenhum. Se ele escolher "escolher a abertura" ou "escolher o fechamento", pergunte no chat qual faixa e passe o ID em start_track ou end_track. Se já perguntou ou já montou um set nesta conversa, reaproveite as respostas e não pergunte de novo.
+Nunca limite o set por conta própria (nem a 10 faixas) e nunca escolha um subconjunto por track_ids a partir de uma playlist: passe playlist e o tamanho; track_ids só quando o usuário nomear as faixas.
 Na primeira montagem de set de uma playlist nesta conversa, chame metadata_coverage antes de dj_build_set e comente a cobertura em uma frase.
 Playlists cujo nome começa com [DJ MIX] são sets que o Play.Me já enviou ao Spotify: não as use como fonte de um set novo, a menos que o usuário peça; a fonte é a playlist original (ex.: "Eletro", não "[DJ MIX] Eletro").
 Nunca crie playlist no Spotify por conta própria: só chame a ferramenta de criar playlist quando o usuário pedir o envio. O envio passa por um botão de aprovação na tela; se o usuário não aprovar, o set continua como rascunho.
 Nunca use emojis, nem no fim das frases. Use os termos das ferramentas sem trocar: a nota da passagem (0 a 1, do montador) é diferente da confiança do plano de transição.
-Você só tem as ferramentas do spotify-dj: não existe Bash, PowerShell, leitura de arquivos nem outra ferramenta. Nunca tente ler ou rodar nada. Se um resultado de ferramenta vier grande ou resumido, use o que já chegou e siga; nunca repita a mesma chamada para "ler o arquivo".`;
+Você só tem as ferramentas do spotify-dj e a ask_dj: não existe Bash, PowerShell, leitura de arquivos nem outra ferramenta. Nunca tente ler ou rodar nada. Se um resultado de ferramenta vier grande ou resumido, use o que já chegou e siga; nunca repita a mesma chamada para "ler o arquivo".`;
 
 /** Linha extra do system prompt com os pesos do usuário (porcentagem inteira, em fração com ponto). */
 const weightsLine = (w: Weights): string => {
@@ -77,6 +87,8 @@ const thinkingOf = (tokens: number): ThinkingConfig =>
 export interface TurnCtx {
   repo: Repo;
   waiter: ApprovalWaiter;
+  /** Esperas do ask_dj (a ferramenta fecha sobre este ctx). */
+  questions: Waiter<Answers | null>;
   emit: (event: ServerEvent) => void;
   chatSessionId: string;
   /** Mensagem do usuário, gravada como nota da versão. */
@@ -182,6 +194,7 @@ const plural = (n: number | undefined, one: string, many: string): string | unde
 const line = (...parts: (string | undefined)[]): string => parts.filter(Boolean).join(" · ");
 const nota = (v: unknown): string | undefined => (typeof v === "number" ? v.toFixed(2).replace(".", ",") : undefined);
 const mins = (n: number | undefined): string | undefined => (n === undefined ? undefined : `${Math.round(n)} min`);
+const clip = (s: string, max = 40): string => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 const TYPE_LABEL: Record<string, string> = { blend: "Blend", bass_swap: "Bass swap", filter: "Filtro", echo_out: "Echo out" };
 /** Curva em português, para o nome do set. */
 const CURVE_LABEL: Record<string, string> = { classic: "clássica", peak_time: "peak time", warm_up: "warm up", sunrise: "sunrise" };
@@ -216,6 +229,7 @@ const START: Record<string, (i: Rec, nm: Names) => string | undefined> = {
   export_mix_guide: sourceOf,
   metadata_lookup: (i, nm) => line(sourceOf(i, nm), i.dry_run === false ? "gravar" : "dry run"),
   metadata_coverage: playlistOf,
+  ask_dj: (i) => plural(len(i.questions), "pergunta", "perguntas"),
 };
 
 const END: Record<string, (r: Rec) => string | undefined> = {
@@ -246,6 +260,13 @@ const END: Record<string, (r: Rec) => string | undefined> = {
     return line(own(TYPE_LABEL, String(at(r, "plan", "type"))), bars === undefined ? undefined : `${bars} c.`);
   },
   export_mix_guide: (r) => plural(len(r.steps), "passagem", "passagens"),
+  // até 3 respostas com texto (o texto livre do DJ é cortado); pergunta pulada não aparece; nenhuma resposta = "pulado"
+  ask_dj: (r) => {
+    if (r.status === "skipped") return "pulado";
+    if (r.status !== "answered" || !isObj(r.answers)) return undefined;
+    const given = Object.entries(r.answers).filter((e): e is [string, string] => typeof e[1] === "string").slice(0, 3);
+    return given.length > 0 ? `respondido: ${given.map(([id, text]) => `${id.replace(/_/g, " ")} ${clip(text)}`).join(" · ")}` : "pulado";
+  },
 };
 
 /** Detalhe de uma chamada (e, nas ferramentas de metadados, os números): `start` lê o input; `end`, o resultado estruturado. */
@@ -361,8 +382,68 @@ function withAvoid(ctx: TurnCtx, input: Record<string, unknown>): Record<string,
   return avoid.length > 0 ? { ...input, avoid } : input;
 }
 
-/** Gate do canUseTool: leitura do spotify-dj passa; criar playlist exige clique de aprovação; o resto é negado. */
+// ---------- ask_dj: o agente pergunta ao DJ antes de montar (servidor MCP em processo "playme", um por rodada do turno) ----------
+
+const askOption = z.object({
+  label: z.string().min(1).max(60),
+  description: z.string().max(140).optional(),
+  recommended: z.boolean().optional(),
+});
+const askQuestion = z.object({
+  id: z.string().regex(/^[a-z_]{1,24}$/),
+  text: z.string().min(1).max(160),
+  header: z.string().max(40).optional(),
+  options: z.array(askOption).min(2).max(4),
+  allow_other: z.boolean().default(false),
+});
+
+const ASK_DESCRIPTION = `Pergunta ao DJ, numa janela com opções, o que falta para montar o set (tamanho, curva, abertura e fechamento, playlist). Use UMA vez, antes do primeiro dj_build_set de um pedido, só com as perguntas que faltam. O turno espera a resposta do DJ.
+
+Args:
+  - title (opcional, até 80 caracteres): título da janela
+  - questions (1 a 4 perguntas, com ids diferentes): cada uma com id (letras minúsculas e _, até 24; ex.: "tamanho"), text (até 160 caracteres), header (opcional, rótulo curto), options (2 a 4; label até 60 caracteres, description opcional até 140, recommended: true na opção que você recomenda) e allow_other (true abre a linha "Outra opção", com texto livre)
+
+Não escreva "(Recomendado)" no label: a tela acrescenta e põe a recomendada primeiro.
+
+Retorna JSON { status, answers }: status é "answered" ou "skipped" (o DJ pulou tudo ou a conversa foi encerrada); answers tem uma entrada por pergunta, com o label da opção escolhida, o texto livre do DJ ou null se ele pulou aquela pergunta.`;
+
+type QuestionsEvent = Extract<ServerEvent, { type: "questions" }>;
+
+/**
+ * Emite o evento `questions`, espera o DJ responder (POST /api/questions/:id resolve a espera) e devolve { status, answers } ao agente.
+ * O evento emitido é o mesmo objeto que foi para o `record` do turno: ao resolver ele ganha status e answers, e o turno gravado sai com o estado final.
+ * Abort do turno = null = pulada. ponytail: sem prazo para responder (como a approval, o turno espera o clique ou a desconexão); `createSdkMcpServer({ timeout })` limita se virar problema.
+ */
+function askDjTool(ctx: TurnCtx, signal: AbortSignal) {
+  return defineTool(
+    "ask_dj",
+    ASK_DESCRIPTION,
+    {
+      title: z.string().max(80).optional(),
+      questions: z.array(askQuestion).min(1).max(4).refine((qs) => new Set(qs.map((q) => q.id)).size === qs.length, "ids de pergunta repetidos"),
+    },
+    async ({ title, questions }) => {
+      const event: QuestionsEvent = { type: "questions", questions_id: randomUUID(), title: title ?? null, questions };
+      ctx.emit(event);
+      const given = await ctx.questions.wait(event.questions_id, signal);
+      // uma resposta por pergunta declarada (null = pulada); chave que nenhuma pergunta tem é descartada
+      const answers: Answers = Object.fromEntries(questions.map((q) => [q.id, cleanAnswer(given?.[q.id])]));
+      const result = { status: answersStatus(answers), answers };
+      // o turno pode ter fechado a pergunta antes (runChat a marca "expired" e libera a espera): o estado final já gravado fica
+      if (event.status === undefined) {
+        event.status = result.status;
+        event.answers = answers;
+      }
+      return { content: [{ type: "text" as const, text: JSON.stringify(result) }], structuredContent: result };
+    },
+    { alwaysLoad: true }, // o agente sempre vê a ferramenta: nunca adiada atrás de busca de ferramentas
+  );
+}
+
+/** Gate do canUseTool: leitura do spotify-dj e a pergunta ao DJ passam; criar playlist exige clique de aprovação; o resto é negado. */
 export async function gate(ctx: TurnCtx, toolName: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<PermissionResult> {
+  // perguntar ao DJ não escreve nada: passa (só este nome exato; outra ferramenta do servidor playme cai no deny abaixo)
+  if (toolName === ASK_TOOL) return { behavior: "allow", updatedInput: input };
   if (toolName !== CREATE_TOOL) {
     // escrita destrutiva no store local não passa pelo chat (texto de faixa/playlist vira mensagem com papel de usuário)
     if (toolName === `${MCP_PREFIX}dj_delete_track_analysis`) return { behavior: "deny", message: "Apagar análise do store não passa pelo chat do Play.Me; use o Claude Desktop ou a CLI do MCP." };
@@ -422,7 +503,7 @@ export async function runChat(deps: ChatDeps, chatSessionId: string, userMessage
     emit(event);
   };
   try {
-    const ctx: TurnCtx = { repo: deps.repo, waiter: deps.waiter, emit: record, chatSessionId, note: userMessage, storeDir: deps.storeDir };
+    const ctx: TurnCtx = { repo: deps.repo, waiter: deps.waiter, questions: deps.questions, emit: record, chatSessionId, note: userMessage, storeDir: deps.storeDir };
     const resume = deps.repo.getSession(chatSessionId)?.agent_session_id;
     const tools = new Map<string, { tool: string; input: unknown }>(); // tool_use_id -> nome sem prefixo e o input da chamada
     const names: Names = {
@@ -452,7 +533,11 @@ export async function runChat(deps: ChatDeps, chatSessionId: string, userMessage
         options: {
           model: deps.model,
           systemPrompt: `${SYSTEM_PROMPT}\n${weightsLine(deps.settings.get().weights)}`,
-          mcpServers: { "spotify-dj": { type: "stdio", command: process.execPath, args: ["--no-warnings", deps.mcpServerPath], env: deps.mcpEnv } },
+          mcpServers: {
+            "spotify-dj": { type: "stdio", command: process.execPath, args: ["--no-warnings", deps.mcpServerPath], env: deps.mcpEnv },
+            // por rodada (o retry sem pensamento chama o query de novo): um McpServer não se reconecta a outro transporte
+            playme: createSdkMcpServer({ name: "playme", tools: [askDjTool(ctx, abortController.signal)] }),
+          },
           settingSources: [],
           tools: [],
           disallowedTools: NATIVE_TOOLS,
@@ -485,7 +570,7 @@ export async function runChat(deps: ChatDeps, chatSessionId: string, userMessage
             if (block.type === "text") record({ type: "text", text: block.text });
             else if (block.type === "thinking" && block.thinking) record({ type: "thinking", text: block.thinking });
             else if (block.type === "tool_use") {
-              const tool = block.name.replace(MCP_PREFIX, "");
+              const tool = block.name.replace(TOOL_PREFIX, "");
               tools.set(block.id, { tool, input: block.input });
               record({ type: "tool_start", tool, tool_use_id: block.id, detail: summarize(tool, block.input, "start", names).detail });
             }
@@ -528,6 +613,13 @@ export async function runChat(deps: ChatDeps, chatSessionId: string, userMessage
     console.error("agente falhou:", redactKey(raw));
     record({ type: "error", message: signal?.aborted ? "Conversa encerrada." : "Falha no agente. Veja o log do servidor." });
   } finally {
+    // pergunta sem resposta (o SDK caiu com a espera aberta, sem abort): expirada e liberada; nunca "pendente" para sempre na releitura
+    for (const e of events) {
+      if (e.type === "questions" && e.status === undefined) {
+        e.status = "expired";
+        deps.questions.resolve(e.questions_id, null);
+      }
+    }
     // o turno é gravado em qualquer saída (sucesso, erro ou abort); runChat nunca lança
     try {
       deps.repo.addTurn(chatSessionId, userMessage, events, cost);

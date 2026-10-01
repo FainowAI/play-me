@@ -1,9 +1,9 @@
-/** Servidor HTTP (node:http puro): SSE do chat, leitura de sessões/sets, status, playlists, configurações, decisão de approvals e notas das passagens. */
+/** Servidor HTTP (node:http puro): SSE do chat, leitura de sessões/sets, status, playlists, configurações, decisão de approvals, respostas do ask_dj e notas das passagens. */
 import http from "node:http";
 import { AuthRequiredError } from "spotify-dj-mcp-server/dist/services/auth.js";
 import { mixGuideStep } from "spotify-dj-mcp-server/dist/services/planner.js";
 import type { TransitionPlan } from "spotify-dj-mcp-server/dist/types.js";
-import type { ApprovalWaiter } from "./approvals.js";
+import { answersStatus, type Answers, type ApprovalWaiter, type Waiter } from "./approvals.js";
 import type { Repo } from "./repo.js";
 import { InvalidSettingsError, type SettingsStore } from "./settings.js";
 import type { Playlist, ServerEvent, SetVersion, Settings, Status } from "./types.js";
@@ -11,6 +11,8 @@ import type { Playlist, ServerEvent, SetVersion, Settings, Status } from "./type
 export interface HttpDeps {
   repo: Repo;
   waiter: ApprovalWaiter;
+  /** Esperas do ask_dj (POST /api/questions/:id resolve a pergunta que o turno de chat aguarda). */
+  questions: Waiter<Answers | null>;
   status: () => Status;
   playlists: () => Promise<Playlist[]>;
   settings: SettingsStore;
@@ -19,6 +21,8 @@ export interface HttpDeps {
 
 const ORIGINS = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
 const MAX_BODY = 64 * 1024;
+const MAX_ANSWER = 200; // caracteres por resposta (texto de "Outra opção"); o contrato não fixa um teto
+const UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i; // formato dos questions_id (randomUUID)
 
 class HttpError extends Error {
   constructor(readonly status: number, message: string) {
@@ -34,6 +38,10 @@ function decodeId(raw: string): string {
     throw new HttpError(400, "Id inválido.");
   }
 }
+
+/** Corpo de POST /api/questions/:id: um objeto { id_da_pergunta: texto curto | null }. */
+const isAnswers = (v: unknown): v is Answers =>
+  typeof v === "object" && v !== null && !Array.isArray(v) && Object.values(v).every((a) => a === null || (typeof a === "string" && a.length <= MAX_ANSWER));
 
 async function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -53,7 +61,7 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
 }
 
 export function createHttpServer(deps: HttpDeps): http.Server {
-  const { repo, waiter, status, playlists, settings, chat } = deps;
+  const { repo, waiter, questions, status, playlists, settings, chat } = deps;
   const busy = new Set<string>(); // sessões com turno de chat em andamento
 
   /** Versão com os planos e o guia do Mix (um passo por plano; rótulos do snapshot, sem ele os ids). */
@@ -139,6 +147,18 @@ export function createHttpServer(deps: HttpDeps): http.Server {
       const approval = repo.decideApproval(id, decision);
       waiter.resolve(id, decision);
       return json(200, approval);
+    }
+
+    m = /^\/api\/questions\/([^/]+)$/.exec(path);
+    if (m && method === "POST") {
+      const id = decodeId(m[1] ?? "");
+      const { answers } = await readJson(req);
+      if (!isAnswers(answers)) throw new HttpError(400, `answers deve ser um objeto { id_da_pergunta: texto de até ${MAX_ANSWER} caracteres ou null }.`);
+      // ponytail: sem registro de perguntas antigas. Id no formato que o servidor gera e ninguém esperando já foi respondido ou expirou
+      // (409, inclusive depois de restart ou desconexão); id em outro formato nunca foi pergunta (404).
+      if (!UUID.test(id)) throw new HttpError(404, "Pergunta não encontrada.");
+      if (!questions.resolve(id, answers)) throw new HttpError(409, "Esta pergunta já foi respondida ou expirou. Peça de novo no chat.");
+      return json(200, { status: answersStatus(answers) });
     }
 
     m = /^\/api\/plans\/([^/]+)\/feedback$/.exec(path);

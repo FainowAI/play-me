@@ -6,7 +6,7 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 import type { Activity } from "../activity.ts";
 import { ApprovalGate, Button, ChatMessage, Icon, StatusTag, ThinkingStatus, ToolCall, TransitionCard } from "../components/playme/index.ts";
 import { transitionCard, weakestPosition, splitProblems } from "../setview.ts";
-import { pendingApproval, type ChatItem } from "../state.ts";
+import { answersLine, pendingApproval, pendingQuestions, type ChatItem } from "../state.ts";
 import { renderMarkdown } from "./markdown.tsx";
 import { approvalTitles, coverage, count, outOfSetLine, sentMeta, transitionsLabel } from "./text.ts";
 import type { App } from "./useApp.ts";
@@ -15,6 +15,7 @@ type Item = Exclude<ChatItem, { kind: "user" }>;
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 type SetItem = Extract<ChatItem, { kind: "set" }>;
 type ApprovalItem = Extract<ChatItem, { kind: "approval" }>;
+type QuestionsItem = Extract<ChatItem, { kind: "questions" }>;
 type ThinkingItem = Extract<ChatItem, { kind: "thinking" }>;
 type Group = { key: string; role: "user"; text: string } | { key: string; role: "assistant"; items: Item[] };
 
@@ -63,8 +64,8 @@ export function ChatItems({ app }: { app: App }) {
   const groups = group(state.items);
   const reply = groups[groups.length - 1];
   const replying = reply?.role === "assistant" ? reply : null;
-  // ThinkingStatus abre a resposta e fica até o fim do turno, junto do pensamento e do texto (contract.md, Sprint 5); com o gate pendente o turno espera o usuário
-  const working = state.busy && pendingApproval(state) === null;
+  // ThinkingStatus abre a resposta e fica até o fim do turno, junto do pensamento e do texto (contract.md, Sprint 5); com o gate ou as perguntas pendentes o turno espera o usuário
+  const working = state.busy && pendingApproval(state) === null && pendingQuestions(state) === null;
   if (working && !replying) groups.push({ key: `a-${[...state.items].reverse().find((i) => i.kind === "user")?.id ?? "start"}`, role: "assistant", items: [] });
   const running = [...state.items].reverse().find((i): i is ToolItem => i.kind === "tool" && i.status === "running");
 
@@ -102,6 +103,7 @@ export function ChatItems({ app }: { app: App }) {
         const summary = marks.summary.has(it.id);
         (summary ? last : out).push(<SetBlock key={it.id} app={app} item={it} summary={summary} sent={marks.lastSent === it.id} />);
       } else if (it.kind === "approval") out.push(<ApprovalBlock key={it.id} app={app} item={it} deciding={deciding} setDeciding={setDeciding} />);
+      else if (it.kind === "questions") out.push(<QuestionsBlock key={it.id} app={app} item={it} />);
       else if (it.kind === "error") out.push(<ErrorLine key={it.id} text={it.text} />);
     }
     flush();
@@ -202,6 +204,23 @@ function ApprovalBlock({ app, item, deciding, setDeciding }: { app: App; item: A
       onApprove={() => decide(app.approve)}
       onReview={() => decide(app.reject)}
     />
+  );
+}
+
+/** Perguntas do agente (ask_dj): pendente chama a janela; respondida e pulada viram uma linha do que ficou decidido. */
+function QuestionsBlock({ app, item }: { app: App; item: QuestionsItem }) {
+  if (item.status === "expired") return <p className="md-text md-p note">Perguntas expiradas; faça o pedido de novo.</p>;
+  if (item.status === "skipped") return <p className="md-text md-p note">Perguntas puladas: vale a playlist inteira e a curva clássica.</p>;
+  if (item.status === "answered") return <p className="md-text md-p note">{`Perguntas: ${answersLine(item)}`}</p>;
+  return (
+    <>
+      <p className="md-text md-p note">Responda às perguntas na janela.</p>
+      <div className="actions">
+        <Button variant="ghost" size="sm" onClick={app.openQuestions}>
+          Abrir perguntas
+        </Button>
+      </div>
+    </>
   );
 }
 

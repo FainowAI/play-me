@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { jevFromEnv } from "spotify-dj-mcp-server/dist/services/jev.js";
-import { ApprovalWaiter } from "./approvals.js";
+import { ApprovalWaiter, Waiter, type Answers } from "./approvals.js";
 import { runChat, thinkingTokensFrom, type ChatDeps } from "./agent.js";
 import { createJevStatus } from "./jev-status.js";
 import { openRepo } from "./repo.js";
@@ -32,6 +32,7 @@ const dataDir = path.resolve(root, process.env.PLAYME_DATA_DIR || "data");
 mkdirSync(dataDir, { recursive: true });
 const repo = openRepo(path.join(dataDir, "playme.sqlite"));
 const waiter = new ApprovalWaiter();
+const questions = new Waiter<Answers | null>(null); // ask_dj: abort do turno = pulada
 
 const mcpEnv: Record<string, string> = {};
 for (const k of ["SPOTIFY_CLIENT_ID", "SPOTIFY_REDIRECT_URI", "SPOTIFY_DJ_DATA_DIR", "TYPESAFE_API_KEY", "JEV_MIN_CONFIDENCE"]) {
@@ -44,7 +45,7 @@ const settings = new SettingsStore(path.join(dataDir, "settings.json"));
 const storeDir = (process.env.SPOTIFY_DJ_DATA_DIR ?? "").trim() || path.join(homedir(), ".spotify-dj-mcp");
 const model = process.env.PLAYME_MODEL || "claude-haiku-4-5";
 const chatDeps: ChatDeps = {
-  repo, waiter, mcpServerPath, mcpEnv, model, maxBudgetUsd: Number(process.env.PLAYME_MAX_BUDGET_USD) || 0.5,
+  repo, waiter, questions, mcpServerPath, mcpEnv, model, maxBudgetUsd: Number(process.env.PLAYME_MAX_BUDGET_USD) || 0.5,
   storeDir, settings, playlistName: spotify.nameOf, thinkingTokens: thinkingTokensFrom(process.env.PLAYME_THINKING_TOKENS),
 };
 // Jev: a chave vem do .env; o ping (services/jev.ts do MCP) roda no start e, no máximo, a cada 30 min, sem travar as rotas
@@ -52,7 +53,7 @@ const jev = createJevStatus(jevFromEnv(storeDir));
 // só se existem: a chave nunca sai daqui
 const status = (): Status => ({ model, anthropic: true, spotify: { connected: spotify.connected() }, reccobeats: true, jev: jev.get() });
 
-const server = createHttpServer({ repo, waiter, status, playlists: spotify.playlists, settings, chat: (id, msg, emit, signal) => runChat(chatDeps, id, msg, emit, signal) });
+const server = createHttpServer({ repo, waiter, questions, status, playlists: spotify.playlists, settings, chat: (id, msg, emit, signal) => runChat(chatDeps, id, msg, emit, signal) });
 const port = Number(process.env.PLAYME_SERVER_PORT || 8787);
 server.listen(port, "127.0.0.1", () => console.log(`Play.Me server em http://127.0.0.1:${port}`));
 void jev.refresh(); // ping do Jev no start, sem esperar por ele

@@ -37,6 +37,9 @@ export const api = {
   set: (id: string) => request<SetDetail>("GET", `/api/sets/${encodeURIComponent(id)}`),
   decide: (approvalId: string, decision: Exclude<ApprovalStatus, "pending">) =>
     request<{ id: string; status: ApprovalStatus }>("POST", `/api/approvals/${encodeURIComponent(approvalId)}`, { decision }),
+  /** Sprint 6: respostas do modal de perguntas (ask_dj); null = pulada. 404 e 409: já respondida, expirada ou o servidor reiniciou. */
+  answer: (questionsId: string, answers: Record<string, string | null>) =>
+    request<{ status: "answered" | "skipped" }>("POST", `/api/questions/${encodeURIComponent(questionsId)}`, { answers }),
   settings: () => request<Settings>("GET", "/api/settings"),
   /** Sprint 4 (7.1.1): nota 1–5 de uma passagem; devolve a nota gravada. */
   rate: (planId: string, rating: number, notes?: string) =>

@@ -119,6 +119,15 @@ export interface BridgeSuggestion {
   why: string;
 }
 
+/**
+ * P16: o que o Jev fez na ordem do set (só o dj_build_set preenche; buildSet nunca).
+ * `chosen` + `fallback` = passos que tinham escolha (posição com 2+ candidatas); `latency_ms` = soma das chamadas;
+ * `rules_average_score` = nota média do feixe das regras, a referência para comparar com `average_score`.
+ */
+export type JevSetInfo =
+  | { used: true; chosen: number; fallback: number; calls: number; errors: number; latency_ms: number; rules_average_score: number }
+  | { used: false; reason: string };
+
 export interface SetResult {
   curve: CurvePreset;
   weights: Weights;
@@ -130,6 +139,7 @@ export interface SetResult {
   bridges: BridgeSuggestion[];
   warnings: string[];
   plans?: TransitionPlan[]; // um por passagem, na ordem de `transitions` (preenchido pelas ferramentas)
+  jev?: JevSetInfo; // P16: preenchido pelo dj_build_set
   // P10: só quando o set foi pedido por duration_minutes/max_tracks (sem eles o resultado não traz estes campos)
   pool_size?: number; // faixas analisadas consideradas na seleção
   duration_ms?: number | null; // soma das durações da ordem; null se alguma faltar

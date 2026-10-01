@@ -4,7 +4,7 @@
  * Check runnable: src/tests/logic.test.ts.
  */
 import { activityForTool, type Activity } from "./activity.ts";
-import type { ApprovalStatus, Playlist, ServerEvent, SessionListItem, SetDetail, SetStatus, SetVersionDetail, Settings, Status, Turn } from "./types.ts";
+import type { ApprovalStatus, Playlist, Question, QuestionOption, QuestionsStatus, ServerEvent, SessionListItem, SetDetail, SetStatus, SetVersionDetail, Settings, Status, Turn } from "./types.ts";
 
 export type Theme = "dark" | "light";
 export type PanelTab = "ordem" | "transicoes" | "guia";
@@ -16,12 +16,13 @@ export type ChatItem =
   | { kind: "text"; id: string; text: string } // bloco de texto do Play.Me (markdown simples)
   | { kind: "tool"; id: string; tool: string; detail: string; status: ToolStatus; activity: Activity; summary?: Record<string, number | boolean | null> } // summary: números das ferramentas de metadados (card de cobertura)
   | { kind: "approval"; id: string; set_id: string | null; playlist_name: string; track_count: number; track_ids: string[]; status: ApprovalStatus | "expired" }
+  | { kind: "questions"; id: string; title: string | null; questions: Question[]; status: QuestionsStatus; answers: Record<string, string | null> | null } // Sprint 6: perguntas do ask_dj (id = questions_id); answers null = sem resposta ainda
   | { kind: "set"; id: string; set_id: string; version: number; status: SetStatus } // marcador: a tela mostra o card da passagem mais arriscada e os atalhos
   | { kind: "error"; id: string; text: string }
   | { kind: "thinking"; id: string; text: string; live: boolean } // Sprint 5: raciocínio do agente (live = ainda chegando)
   | { kind: "draft"; id: string; text: string }; // Sprint 5: texto da resposta ainda em streaming
 
-export type Overlay = { kind: "transition"; position: number } | { kind: "track"; trackId: string } | { kind: "settings" } | null;
+export type Overlay = { kind: "transition"; position: number } | { kind: "track"; trackId: string } | { kind: "settings" } | { kind: "questions" } | null;
 
 export interface AppState {
   theme: Theme;
@@ -75,6 +76,7 @@ export type Action =
   | { type: "turn_failed"; text: string } // erro HTTP antes do primeiro evento
   | { type: "set_loaded"; set: SetDetail }
   | { type: "approval_decided"; approvalId: string; status: ApprovalStatus | "expired" }
+  | { type: "questions_done"; questionsId: string; status: QuestionsStatus; answers: Record<string, string | null> | null } // resposta do DJ (otimista); "pending" desfaz (erro de rede)
   | { type: "view_version"; version: number | null }
   | { type: "panel"; open?: boolean; tab?: PanelTab }
   | { type: "sidebar"; open: boolean }
@@ -84,6 +86,7 @@ let seq = 0;
 export const nextId = (): string => `i${++seq}`;
 
 const CREATE_TOOL = "spotify_create_playlist_from_order";
+const ASK_TOOL = "ask_dj"; // casa pelo sufixo: o servidor pode ou não cortar o prefixo mcp__playme__
 
 /** Aplica um evento do servidor aos itens do chat (usado ao vivo e na releitura de turnos). */
 export function applyEvent(items: ChatItem[], event: ServerEvent): ChatItem[] {
@@ -121,12 +124,18 @@ export function applyEvent(items: ChatItem[], event: ServerEvent): ChatItem[] {
       );
       return [...withTool, { kind: "approval", id: event.approval_id, set_id: event.set_id, playlist_name: event.playlist_name, track_count: event.track_count, track_ids: event.track_ids, status }];
     }
+    case "questions": {
+      // ao vivo vem sem status (pendente); na releitura, o estado final e as respostas. A pílula do ask_dj fica "aguardando você" enquanto espera, como a da criação com o gate
+      const status = event.status ?? "pending";
+      const withTool = items.map((it) => (it.kind === "tool" && it.tool.endsWith(ASK_TOOL) && it.status === "running" && status === "pending" ? { ...it, status: "waiting" as const } : it));
+      return [...withTool, { kind: "questions", id: event.questions_id, title: event.title, questions: event.questions, status, answers: event.answers ?? null }];
+    }
     case "set":
       return [...items, { kind: "set", id: nextId(), set_id: event.set_id, version: event.version, status: event.status }];
     case "error":
-      return [...settle(items), { kind: "error", id: nextId(), text: event.message }];
+      return [...expirePending(settle(items)), { kind: "error", id: nextId(), text: event.message }];
     case "done":
-      return settle(items);
+      return expirePending(settle(items));
     default:
       return items; // session
   }
@@ -142,6 +151,10 @@ function settleThinking(items: ChatItem[]): ChatItem[] {
 function withoutDraft(items: ChatItem[]): ChatItem[] {
   return items.filter((it) => it.kind !== "draft");
 }
+/** O turno acabou sem resposta (done, error ou queda do stream): ninguém mais espera as perguntas pendentes. */
+function expirePending(items: ChatItem[]): ChatItem[] {
+  return items.map((it) => (it.kind === "questions" && it.status === "pending" ? { ...it, status: "expired" as const } : it));
+}
 
 /** Reconstrói o chat a partir dos turnos gravados (GET /api/sessions/:id). */
 export function itemsFromTurns(turns: Turn[]): ChatItem[] {
@@ -156,7 +169,7 @@ export function itemsFromTurns(turns: Turn[]): ChatItem[] {
 /** Atividade do orb depois de um evento: a última ferramenta rodando, ou "composing" quando o texto chega. */
 function activityAfter(items: ChatItem[], event: ServerEvent, busy: boolean): Activity {
   if (!busy) return "idle";
-  if (event.type === "approval") return "idle"; // gate aguardando aprovação = breathing
+  if (event.type === "approval" || event.type === "questions") return "idle"; // gate ou perguntas aguardando o DJ = breathing
   if (event.type === "thinking_delta" || event.type === "text_delta" || event.type === "thinking") return "composing";
   const running = [...items].reverse().find((it) => it.kind === "tool" && it.status === "running");
   if (running && running.kind === "tool") return running.activity;
@@ -194,10 +207,11 @@ export function reducer(state: AppState, action: Action): AppState {
       const next: AppState = { ...state, items, busy, activity: activityAfter(items, e, busy) };
       if (e.type === "done") next.lastCost = e.cost_usd;
       if (e.type === "set") next.viewVersion = null; // versão nova: o painel volta para a mais recente
+      if (e.type === "questions" && (e.status ?? "pending") === "pending") next.overlay = { kind: "questions" }; // ao vivo a janela abre sozinha (por cima de qualquer gaveta); fechá-la não perde as perguntas: o chat reabre
       return next;
     }
     case "turn_failed":
-      return { ...state, items: [...state.items, { kind: "error", id: nextId(), text: action.text }], busy: false, activity: "idle" };
+      return { ...state, items: [...expirePending(state.items), { kind: "error", id: nextId(), text: action.text }], busy: false, activity: "idle" };
     case "set_loaded":
       return { ...state, set: action.set };
     case "approval_decided":
@@ -210,6 +224,13 @@ export function reducer(state: AppState, action: Action): AppState {
           return it;
         }),
         activity: state.busy && action.status === "approved" ? "shipping" : state.activity,
+      };
+    case "questions_done":
+      return {
+        ...state,
+        items: state.items.map((it) => (it.kind === "questions" && it.id === action.questionsId ? { ...it, status: action.status, answers: action.answers } : it)),
+        // respondida: o agente volta a trabalhar; devolvida a pendente (erro de rede): volta a esperar o DJ
+        activity: state.busy ? (action.status === "pending" ? "idle" : "composing") : state.activity,
       };
     case "view_version":
       return { ...state, viewVersion: action.version };
@@ -236,6 +257,22 @@ export function selectVersion(state: AppState): SetVersionDetail | null {
 export function pendingApproval(state: AppState): Extract<ChatItem, { kind: "approval" }> | null {
   const found = [...state.items].reverse().find((it) => it.kind === "approval" && it.status === "pending");
   return found && found.kind === "approval" ? found : null;
+}
+
+/** Há um turno esperando as respostas do modal de perguntas? */
+export function pendingQuestions(state: AppState): Extract<ChatItem, { kind: "questions" }> | null {
+  const found = [...state.items].reverse().find((it) => it.kind === "questions" && it.status === "pending");
+  return found && found.kind === "questions" ? found : null;
+}
+
+/** Opções na ordem da janela: a recomendada primeiro (ordem estável). O " (Recomendado)" é da UI; a resposta gravada é só o label. */
+export function orderOptions(options: QuestionOption[]): QuestionOption[] {
+  return [...options.filter((o) => o.recommended), ...options.filter((o) => !o.recommended)];
+}
+
+/** "tamanho 1 hora · curva pulada": o que ficou decidido, para a linha do chat. Rótulo = header ou id da pergunta. */
+export function answersLine(item: Extract<ChatItem, { kind: "questions" }>): string {
+  return item.questions.map((q) => `${(q.header ?? q.id).replace(/_/g, " ").toLowerCase()} ${item.answers?.[q.id] ?? "pulada"}`).join(" · ");
 }
 
 /** Título/artista a partir do rótulo "Título — Artista" do MCP. */

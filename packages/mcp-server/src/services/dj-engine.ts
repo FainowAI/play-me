@@ -356,7 +356,7 @@ function dedupe(beams: Beam[]): Beam[] {
   return out;
 }
 
-function startFit(track: TrackAnalysis, target: number): number {
+export function startFit(track: TrackAnalysis, target: number): number {
   const energyFit = track.energy === undefined ? 0.5 : Math.max(0, 1 - Math.abs(track.energy - target) / 5);
   return energyFit;
 }
@@ -365,7 +365,7 @@ function startFit(track: TrackAnalysis, target: number): number {
  * P10: quantas faixas o set terá. `maxTracks`, ou a duração pedida dividida pela duração média do pool
  * (faixa sem duração fica fora da média); limitado entre 2 e min(n, 150). `wanted` é o pedido antes do limite.
  */
-function setSize(tracks: TrackAnalysis[], options: BuildOptions): { count: number; wanted: number } {
+export function setSize(tracks: TrackAnalysis[], options: BuildOptions): { count: number; wanted: number } {
   let wanted = options.maxTracks ?? 0;
   if (options.maxTracks === undefined) {
     const known = tracks.flatMap((track) => {
@@ -385,7 +385,7 @@ function setSize(tracks: TrackAnalysis[], options: BuildOptions): { count: numbe
  * Tira a última faixa enquanto a soma passar do alvo + meia faixa (média da ordem); nunca abaixo de 2.
  * Sem a duração de alguma faixa não há soma: a ordem fica como está.
  */
-function trimToTarget(
+export function trimToTarget(
   ordered: TrackAnalysis[],
   targetMs: number,
   durations?: ReadonlyMap<string, number | null>,
@@ -403,7 +403,7 @@ function trimToTarget(
 }
 
 /** P10: pool_size, duration_ms (null se faltar a duração de alguma faixa da ordem) e os avisos da seleção. */
-function annotateSelection(
+export function annotateSelection(
   result: SetResult,
   ordered: TrackAnalysis[],
   pool: number,

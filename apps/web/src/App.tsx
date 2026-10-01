@@ -3,6 +3,7 @@
  * Acima de 1100 px o painel é a terceira coluna; abaixo vira gaveta, e abaixo de 720 px a sidebar também.
  * Estado, API e SSE ficam em shell/useApp.ts; aqui só se distribui.
  */
+import { QuestionsWindow } from "./components/playme/index.ts";
 import { SetPanel, SettingsWindow, TrackDrawer, TransitionWindow } from "./panel/index.ts";
 import { ChatColumn } from "./shell/ChatColumn.tsx";
 import { Overlay } from "./shell/Overlay.tsx";
@@ -19,6 +20,8 @@ export function App() {
   const hasPanel = state.set !== null && version !== null;
   const overlay = state.overlay;
   const track = overlay?.kind === "track" ? version?.snapshot?.order.find((t) => t.track_id === overlay.trackId) : undefined;
+  // a última pergunta do ask_dj, pendente ou já respondida: a janela segue montada durante a saída animada depois do envio
+  const asked = overlay?.kind === "questions" ? state.items.findLast((it) => it.kind === "questions") : undefined;
   // "Fechar"/"Cancelar" e as ações que fecham passam pela saída animada da camada (Overlay.closeRef); sem camada montada, fecha direto
   const overlayClose = useRef<(() => void) | null>(null);
   const panelClose = useRef<(() => void) | null>(null);
@@ -78,6 +81,20 @@ export function App() {
       {overlay?.kind === "settings" && (
         <Overlay open kind="window" width={760} padding="28px 32px" gap={24} label="Configurações" onClose={app.closeOverlay} closeRef={overlayClose}>
           <SettingsWindow status={state.status} theme={state.theme} onTheme={app.setTheme} settings={state.settings} onSave={app.saveSettings} onClose={closeOverlay} />
+        </Overlay>
+      )}
+      {asked?.kind === "questions" && (
+        <Overlay open kind="window" width={640} padding="24px 28px" gap={16} label="Perguntas" onClose={app.closeOverlay} closeRef={overlayClose}>
+          <QuestionsWindow
+            key={asked.id}
+            title={asked.title}
+            questions={asked.questions}
+            disabled={asked.status !== "pending"}
+            onSubmit={(answers) => {
+              void app.answer(asked.id, answers);
+              closeOverlay();
+            }}
+          />
         </Overlay>
       )}
     </div>

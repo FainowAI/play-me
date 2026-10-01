@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import type { query } from "@anthropic-ai/claude-agent-sdk";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AnalysisStore } from "spotify-dj-mcp-server/dist/services/analysis-store.js";
 import { AuthRequiredError } from "spotify-dj-mcp-server/dist/services/auth.js";
-import { ApprovalWaiter } from "../approvals.js";
+import { answersStatus, ApprovalWaiter, Waiter, type Answers } from "../approvals.js";
 import { extractCreated, extractProposal, finishCreate, gate, recordFromResult, reorderSnapshot, runChat, structuredOf, summarize, thinkingTokensFrom, type ChatDeps, type TurnCtx } from "../agent.js";
 import { openRepo, type Repo } from "../repo.js";
 import { createSpotify } from "../spotify.js";
@@ -78,7 +81,7 @@ function setup(storeDir = emptyStore) {
   const f = fakeRepo();
   const events: ServerEvent[] = [];
   const waiter = new ApprovalWaiter();
-  const ctx: TurnCtx = { repo: f.repo, waiter, emit: (e) => events.push(e), chatSessionId: "c1", note: "monte um set", storeDir };
+  const ctx: TurnCtx = { repo: f.repo, waiter, questions: new Waiter<Answers | null>(null), emit: (e) => events.push(e), chatSessionId: "c1", note: "monte um set", storeDir };
   return { f, events, waiter, ctx };
 }
 
@@ -133,7 +136,9 @@ const input = { track_ids: ["t1", "spotify:track:t2", "https://open.spotify.com/
   assert.equal((await gate(ctx, "mcp__spotify-dj__dj_build_set", {})).behavior, "allow");
   assert.equal((await gate(ctx, "mcp__spotify-dj__spotify_get_playlist_tracks", {})).behavior, "allow");
   assert.equal((await gate(ctx, "mcp__spotify-dj__dj_delete_track_analysis", {})).behavior, "deny");
-  for (const name of ["Bash", "Read", "WebFetch", "mcp__outro__x"]) {
+  // Sprint 6: a pergunta ao DJ passa com o input como veio; só esse nome exato (outra ferramenta do servidor playme é negada)
+  assert.deepEqual(await gate(ctx, "mcp__playme__ask_dj", { questions: [] }), { behavior: "allow", updatedInput: { questions: [] } });
+  for (const name of ["Bash", "Read", "WebFetch", "mcp__outro__x", "mcp__playme__outra", "mcp__playme__ask_dj2"]) {
     const r = await gate(ctx, name, {});
     assert.deepEqual(r, { behavior: "deny", message: "Ferramenta não disponível no Play.Me." });
   }
@@ -314,7 +319,7 @@ const sized = { ...full, pool_size: 30, duration_ms: 5_460_000, order: full.orde
 {
   const real = openRepo(":memory:");
   const session = real.createSession("Eletro");
-  const ctx: TurnCtx = { repo: real, waiter: new ApprovalWaiter(), emit: () => undefined, chatSessionId: session.id, note: "monte um set", storeDir };
+  const ctx: TurnCtx = { repo: real, waiter: new ApprovalWaiter(), questions: new Waiter<Answers | null>(null), emit: () => undefined, chatSessionId: session.id, note: "monte um set", storeDir };
   recordFromResult(ctx, full);
   const setId = real.getCurrentSet(session.id)?.id ?? "";
   const versionId = real.latestVersion(setId)?.id ?? "";
@@ -350,6 +355,18 @@ const sized = { ...full, pool_size: 30, duration_ms: 5_460_000, order: full.orde
   assert.equal(d("dj_evaluate_order", { average_score: 0.8 }, "end"), "nota média 0,80");
   assert.equal(d("transition_plan", { from_track: "t1", to_track: "spotify:track:t2" }, "start"), "Um — Artista → t2");
   assert.equal(d("transition_plan", { plan: { type: "blend", length_bars: 16 } }, "end"), "Blend · 16 c.");
+  // Sprint 6: perguntas ao DJ
+  assert.equal(d("ask_dj", { title: "x", questions: [{}, {}] }, "start"), "2 perguntas");
+  assert.equal(d("ask_dj", { questions: [{}] }, "start"), "1 pergunta");
+  assert.equal(d("ask_dj", { questions: "x" }, "start"), ""); // sem lista: nunca "NaN"
+  const respostas = { tamanho: "1 hora", curva: "peak time", abertura_fechamento: "sem faixa fixa", playlist: "Eletro" };
+  assert.equal(d("ask_dj", { status: "answered", answers: respostas }, "end"), "respondido: tamanho 1 hora · curva peak time · abertura fechamento sem faixa fixa"); // até 3
+  assert.equal(d("ask_dj", { status: "answered", answers: { tamanho: null, curva: "peak time" } }, "end"), "respondido: curva peak time"); // pulada não aparece
+  assert.equal(d("ask_dj", { status: "skipped", answers: { tamanho: null } }, "end"), "pulado");
+  assert.equal(d("ask_dj", { status: "answered", answers: { tamanho: null } }, "end"), "pulado");
+  assert.equal(d("ask_dj", { status: "answered", answers: { tamanho: "x".repeat(60) } }, "end"), `respondido: tamanho ${"x".repeat(39)}…`); // texto livre cortado
+  assert.equal(d("ask_dj", "texto", "end"), ""); // sem resultado estruturado
+  assert.equal(d("ask_dj", { content: [] }, "end"), "");
   assert.equal(d("spotify_create_playlist_from_order", { track_ids: ["a", "b", "c"] }, "start"), "3 faixas · privada");
   assert.equal(d("spotify_create_playlist_from_order", { tracks_added: 21, public: false }, "end"), "21 faixas · privada");
   assert.equal(d("metadata_lookup", { playlist: "pl1" }, "start"), "Eletro · dry run");
@@ -374,7 +391,7 @@ const sized = { ...full, pool_size: 30, duration_ms: 5_460_000, order: full.orde
 }
 
 // ---------- runChat inteiro com um query falso: detalhes, versão com snapshot, turno gravado e pesos ----------
-type Seen = { options?: { systemPrompt?: unknown; thinking?: unknown; includePartialMessages?: unknown } };
+type Seen = { options?: { systemPrompt?: unknown; thinking?: unknown; includePartialMessages?: unknown; mcpServers?: Record<string, unknown> } };
 const fakeQuery = (messages: unknown[], seen?: Seen) =>
   ((args: Seen) => {
     if (seen) seen.options = args.options;
@@ -386,7 +403,7 @@ const fakeQuery = (messages: unknown[], seen?: Seen) =>
     })();
   }) as unknown as typeof query;
 const chatDeps = (f: ReturnType<typeof fakeRepo>, q: typeof query): ChatDeps => ({
-  repo: f.repo, waiter: new ApprovalWaiter(), mcpServerPath: "mcp.js", mcpEnv: {}, model: "m", maxBudgetUsd: 1, thinkingTokens: 1024,
+  repo: f.repo, waiter: new ApprovalWaiter(), questions: new Waiter<Answers | null>(null), mcpServerPath: "mcp.js", mcpEnv: {}, model: "m", maxBudgetUsd: 1, thinkingTokens: 1024,
   storeDir, settings: { get: () => ({ weights: { camelot: 35, bpm: 25, energy: 25, style: 10, progression: 5 } }) },
   playlistName: (id) => (id === "pl1" ? "Eletro" : undefined), query: q,
 });
@@ -423,9 +440,22 @@ const finished = { type: "result", subtype: "success", total_cost_usd: 0.03 };
   assert.deepEqual(f.turns, [{ userMessage: "monte um set", events: out.filter((e) => e.type !== "done"), cost: 0.03 }]);
   // pesos do usuário no system prompt: fração com ponto e duas casas
   assert.match(String(seen.options?.systemPrompt), /Pesos da nota do par escolhidos pelo usuário \(frações que somam 1\): camelot 0\.35, bpm 0\.25, energy 0\.25, style 0\.10, progression 0\.05\. Passe-os no parâmetro weights de dj_build_set e dj_evaluate_order\./);
-  // Sprint 4: duração e quantidade só quando o usuário pede; o Jev só quando ele pede
+  // Sprint 4: duração e quantidade só quando o usuário pede
   assert.match(String(seen.options?.systemPrompt), /duration_minutes em dj_build_set \(1h30 = 90\).*max_tracks; sem pedido, não passe nenhum dos dois\./);
-  assert.match(String(seen.options?.systemPrompt), /transition_plan com use_jev: true ou jev_compare quando o usuário pedir o Jev\./);
+  // Sprint 6: o Jev entra em todo set; ask_dj uma vez quando falta tamanho ou curva; tamanho pulado = playlist inteira; nunca limitar nem escolher subconjunto
+  const prompt = String(seen.options?.systemPrompt);
+  assert.match(prompt, /O Jev entra em todo set automaticamente \(dj_build_set já o usa\): nunca pergunte se deve usar o Jev\. Depois de montar, diga em uma frase quantos passos o Jev escolheu e quantos ficaram com as regras \(campo jev do resultado\)\./);
+  assert.doesNotMatch(prompt, /quando o usuário pedir o Jev/);
+  assert.match(prompt, /se faltar tamanho \(duração ou quantidade\), curva ou a playlist de origem, chame ask_dj UMA vez, só com as perguntas que faltam/);
+  for (const id of ['id "tamanho"', 'id "curva"', 'id "abertura_fechamento"', 'id "playlist"']) assert.ok(prompt.includes(id), id);
+  assert.match(prompt, /Tamanho pulado = playlist inteira \(sem duration_minutes nem max_tracks\); curva pulada = classic; abertura e fechamento pulados = nenhum\./);
+  assert.match(prompt, /Nunca limite o set por conta própria \(nem a 10 faixas\) e nunca escolha um subconjunto por track_ids a partir de uma playlist: passe playlist e o tamanho; track_ids só quando o usuário nomear as faixas\./);
+  assert.match(prompt, /nunca escreva "Recomendado" no label/);
+  assert.match(prompt, /Você só tem as ferramentas do spotify-dj e a ask_dj/);
+  // P17 (avoid) e P18 ([DJ MIX]) seguem no prompt
+  assert.match(prompt, /passe avoid: \[\] só se o usuário pedir para repetir faixas de sets anteriores\./);
+  assert.match(prompt, /Playlists cujo nome começa com \[DJ MIX\] são sets que o Play\.Me já enviou ao Spotify/);
+  assert.deepEqual(Object.keys(seen.options?.mcpServers ?? {}), ["spotify-dj", "playme"]);
   // Sprint 5: cobertura de metadados antes do primeiro set da playlist (Q3) e emoji proibido até no fim das frases
   assert.match(String(seen.options?.systemPrompt), /Na primeira montagem de set de uma playlist nesta conversa, chame metadata_coverage antes de dj_build_set e comente a cobertura em uma frase\./);
   assert.match(String(seen.options?.systemPrompt), /Nunca use emojis, nem no fim das frases\./);
@@ -659,4 +689,207 @@ for (const [curve, label] of [["classic", "clássica"], ["peak_time", "peak time
   assert.equal((await ok).behavior, "deny");
 }
 
-console.log("[ok] agent: gate, extração, snapshot com origem das faixas, tamanho e energia estimada, reorderSnapshot, detalhe das ferramentas com duração, runChat com turno gravado e pesos, pensamento e streaming, recusa do pensamento, nome do set, nota sem travar o turno, spotify");
+// ---------- Sprint 6: Waiter e ask_dj (servidor MCP em processo "playme") ----------
+// Waiter: abort entrega o valor de abort (null nas perguntas, "rejected" nas approvals); sinal já abortado não trava a espera
+{
+  const q = new Waiter<Answers | null>(null);
+  const abort = new AbortController();
+  const waiting = q.wait("x", abort.signal);
+  assert.equal(q.has("x"), true);
+  abort.abort();
+  assert.equal(await waiting, null);
+  assert.equal(q.has("x"), false);
+  assert.equal(await q.wait("y", abort.signal), null); // já abortado: termina na hora
+  assert.equal(q.has("y"), false);
+  assert.equal(q.resolve("x", { tamanho: "1 hora" }), false); // ninguém esperando
+  const approvals = new ApprovalWaiter();
+  assert.equal(await approvals.wait("z", abort.signal), "rejected");
+  const decided = approvals.wait("w");
+  assert.equal(approvals.resolve("w", "approved"), true);
+  assert.equal(await decided, "approved");
+  // status das respostas: um texto basta para "answered"; nulo, vazio e só espaços valem "skipped"
+  assert.deepEqual(([{ a: "x", b: null }, { a: null }, { a: "  " }, {}] as Answers[]).map(answersStatus), ["answered", "skipped", "skipped", "skipped"]);
+}
+
+type AskOptions = { mcpServers?: Record<string, unknown> };
+type Run = { f: ReturnType<typeof fakeRepo>; live: ServerEvent[]; deps: ChatDeps; options?: AskOptions };
+type QuestionsEvent = Extract<ServerEvent, { type: "questions" }>;
+const questionsOf = (events: ServerEvent[]) => events.find((e): e is QuestionsEvent => e.type === "questions");
+const textOfResult = (r: unknown): string => String(((r as { content?: { text?: string }[] }).content ?? [])[0]?.text);
+const askInput = {
+  title: "Antes de montar",
+  questions: [
+    { id: "tamanho", text: "Qual o tamanho do set?", options: [{ label: "1 hora", description: "o mais comum", recommended: true }, { label: "1h30" }, { label: "2 horas" }], allow_other: true },
+    { id: "curva", text: "Qual curva de energia?", options: [{ label: "clássica", recommended: true }, { label: "peak time" }] },
+  ],
+};
+const asked = (id: string, input: unknown) => ({ type: "assistant", message: { content: [{ type: "tool_use", id, name: "mcp__playme__ask_dj", input }] } });
+const answeredWith = (id: string, result: unknown) => ({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: (result as { content: unknown }).content }] }, tool_use_result: result });
+const until = async (cond: () => boolean): Promise<void> => {
+  for (let i = 0; i < 400 && !cond(); i++) await new Promise((r) => setTimeout(r, 5));
+  assert.ok(cond(), "a condição não chegou a valer");
+};
+/**
+ * runChat com um query falso que liga um cliente MCP ao servidor playme que o próprio runChat montou (InMemoryTransport):
+ * a ferramenta ask_dj roda de verdade (schema zod, handler, evento, espera). `play` faz o papel do agente e do DJ.
+ * `live` guarda cópias dos eventos no instante do emit: o objeto gravado no turno é o mesmo e muda depois.
+ */
+async function askRun(play: (client: Client, run: Run) => AsyncGenerator<unknown>, signal?: AbortSignal): Promise<Run> {
+  const run = { f: fakeRepo(), live: [] as ServerEvent[] } as Run;
+  const q = ((args: { options: AskOptions }) =>
+    (async function* () {
+      run.options = args.options;
+      const { instance } = args.options.mcpServers?.playme as { instance: McpServer };
+      const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
+      await instance.connect(serverSide);
+      const mcp = new Client({ name: "teste", version: "1" });
+      await mcp.connect(clientSide);
+      try {
+        yield* play(mcp, run);
+      } finally {
+        await mcp.close();
+      }
+    })()) as unknown as typeof query;
+  run.deps = chatDeps(run.f, q);
+  await runChat(run.deps, "c1", "monte um set", (e) => run.live.push(JSON.parse(JSON.stringify(e)) as ServerEvent), signal);
+  return run;
+}
+const savedQuestions = (run: Run) => run.f.turns[0]?.events.find((e) => e.type === "questions");
+
+// o DJ responde: o agente recebe { status, answers }; o evento ao vivo vai sem status e o gravado sai com o estado final
+{
+  let reply: unknown;
+  const run = await askRun(async function* (client, r) {
+    yield sys;
+    yield asked("u1", askInput);
+    const call = client.callTool({ name: "ask_dj", arguments: askInput });
+    await until(() => questionsOf(r.live) !== undefined);
+    const id = questionsOf(r.live)?.questions_id ?? "";
+    assert.equal(r.deps.questions.has(id), true);
+    // pergunta que o agente não fez é descartada; texto só de espaços vale "pulada"
+    assert.equal(r.deps.questions.resolve(id, { tamanho: " 1 hora ", curva: "  ", outra: "x" }), true);
+    reply = await call;
+    yield answeredWith("u1", reply);
+    yield finished;
+  });
+  assert.deepEqual(Object.keys(run.options?.mcpServers ?? {}), ["spotify-dj", "playme"]);
+  assert.deepEqual(run.live.map((e) => e.type), ["tool_start", "questions", "tool_end", "done"]);
+  assert.deepEqual(run.live[0], { type: "tool_start", tool: "ask_dj", tool_use_id: "u1", detail: "2 perguntas" }); // sem o prefixo mcp__playme__
+  const live = questionsOf(run.live);
+  assert.match(live?.questions_id ?? "", /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+  // ao vivo: sem status nem answers (= pendente); allow_other omitido vira false
+  assert.deepEqual(live, { type: "questions", questions_id: live?.questions_id, title: "Antes de montar", questions: [askInput.questions[0], { ...askInput.questions[1], allow_other: false }] });
+  assert.deepEqual(run.live[2], { type: "tool_end", tool: "ask_dj", tool_use_id: "u1", is_error: false, detail: "respondido: tamanho 1 hora" });
+  // o que o agente recebeu: texto JSON, uma resposta por pergunta feita
+  assert.deepEqual(JSON.parse(textOfResult(reply)), { status: "answered", answers: { tamanho: "1 hora", curva: null } });
+  assert.deepEqual((reply as { structuredContent: unknown }).structuredContent, { status: "answered", answers: { tamanho: "1 hora", curva: null } });
+  // o turno gravado: o mesmo evento, com o estado final
+  assert.deepEqual(savedQuestions(run), { ...live, status: "answered", answers: { tamanho: "1 hora", curva: null } });
+  assert.equal(run.deps.questions.has(live?.questions_id ?? ""), false);
+}
+
+// o DJ pula tudo: skipped, com null em cada pergunta
+{
+  const run = await askRun(async function* (client, r) {
+    yield sys;
+    yield asked("u1", askInput);
+    const call = client.callTool({ name: "ask_dj", arguments: askInput });
+    await until(() => questionsOf(r.live) !== undefined);
+    r.deps.questions.resolve(questionsOf(r.live)?.questions_id ?? "", { tamanho: null, curva: null });
+    const reply = await call;
+    assert.deepEqual(JSON.parse(textOfResult(reply)), { status: "skipped", answers: { tamanho: null, curva: null } });
+    yield answeredWith("u1", reply);
+    yield finished;
+  });
+  assert.equal(run.live.find((e) => e.type === "tool_end")?.detail, "pulado");
+  assert.deepEqual(savedQuestions(run), { ...questionsOf(run.live), status: "skipped", answers: { tamanho: null, curva: null } });
+}
+
+const quiet = async (fn: () => Promise<void>): Promise<void> => {
+  const log = console.error;
+  console.error = () => undefined; // o runChat loga a falha do agente (esperada nestes testes)
+  try {
+    await fn();
+  } finally {
+    console.error = log;
+  }
+};
+// o cliente desconecta com a pergunta aberta: abort do turno = skipped
+await quiet(async () => {
+  const controller = new AbortController();
+  let reply: unknown;
+  const run = await askRun(async function* (client, r) {
+    yield sys;
+    yield asked("u1", askInput);
+    const call = client.callTool({ name: "ask_dj", arguments: askInput });
+    await until(() => questionsOf(r.live) !== undefined);
+    controller.abort();
+    reply = await call;
+    throw new Error("aborted"); // o SDK encerra a iteração
+  }, controller.signal);
+  assert.deepEqual(JSON.parse(textOfResult(reply)), { status: "skipped", answers: { tamanho: null, curva: null } });
+  assert.deepEqual(run.live.map((e) => e.type), ["tool_start", "questions", "error"]);
+  assert.deepEqual(run.live.at(-1), { type: "error", message: "Conversa encerrada." });
+  assert.deepEqual(savedQuestions(run), { ...questionsOf(run.live), status: "skipped", answers: { tamanho: null, curva: null } });
+  assert.equal(run.deps.questions.has(questionsOf(run.live)?.questions_id ?? ""), false);
+});
+
+// o SDK cai com a pergunta aberta, sem abort: o turno grava "expired" (nunca pendente para sempre) e libera a espera
+await quiet(async () => {
+  let late: Promise<unknown> = Promise.resolve();
+  const run = await askRun(async function* (client, r) {
+    yield sys;
+    yield asked("u1", askInput);
+    late = client.callTool({ name: "ask_dj", arguments: askInput }).catch(() => undefined);
+    await until(() => questionsOf(r.live) !== undefined);
+    throw new Error("boom");
+  });
+  const id = questionsOf(run.live)?.questions_id ?? "";
+  assert.equal(run.deps.questions.has(id), false); // liberada: um POST atrasado dá 409
+  assert.equal(run.live.at(-1)?.type, "error");
+  const expired = { ...questionsOf(run.live), status: "expired" };
+  assert.deepEqual(savedQuestions(run), expired);
+  await late;
+  await new Promise((r) => setTimeout(r, 20)); // a continuação tardia da ferramenta não sobrescreve o estado gravado
+  assert.deepEqual(savedQuestions(run), expired);
+});
+
+// entrada inválida volta como erro para o agente (que tenta de novo) e não abre janela nenhuma
+{
+  const one = (id: string, label = "a") => ({ id, text: "x", options: [{ label }, { label: "b" }] });
+  const run = await askRun(async function* (client) {
+    yield sys;
+    const invalid: [string, unknown][] = [
+      ["sem perguntas", { questions: [] }],
+      ["5 perguntas", { questions: ["q", "qa", "qaa", "qaaa", "qaaaa"].map((id) => one(id)) }],
+      ["1 opção", { questions: [{ id: "x", text: "x", options: [{ label: "a" }] }] }],
+      ["id fora do padrão", { questions: [one("Tamanho 1")] }],
+      ["ids repetidos", { questions: [one("x"), one("x")] }],
+      ["label de 61 caracteres", { questions: [one("x", "a".repeat(61))] }],
+      ["título de 81 caracteres", { title: "t".repeat(81), questions: [one("x")] }],
+    ];
+    for (const [label, args] of invalid) {
+      const r = await client.callTool({ name: "ask_dj", arguments: args as Record<string, unknown> });
+      assert.equal(r.isError, true, label);
+      assert.match(textOfResult(r), /Input validation error/, label);
+    }
+    const tools = (await client.listTools()).tools;
+    assert.deepEqual(tools.map((t) => t.name), ["ask_dj"]);
+    assert.equal(tools[0]?._meta?.["anthropic/alwaysLoad"], true); // nunca adiada atrás de busca de ferramentas
+    yield finished;
+  });
+  assert.equal(questionsOf(run.live), undefined);
+  assert.equal(run.f.turns[0]?.events.some((e) => e.type === "questions"), false);
+}
+
+// a rodada de refazer o turno sem pensamento monta um servidor playme novo (um McpServer não se reconecta a outro transporte)
+await quiet(async () => {
+  const refusal = "400 invalid_request_error: thinking.enabled.budget_tokens: Input should be greater than or equal to 1024";
+  const calls: NonNullable<Seen["options"]>[] = [];
+  await runChat(chatDeps(fakeRepo(), fakeQueries([[sys, new Error(refusal)], [sys, finished]], calls)), "c1", "oi", () => undefined);
+  assert.equal(calls.length, 2);
+  assert.ok(calls[0]?.mcpServers?.playme && calls[1]?.mcpServers?.playme);
+  assert.notEqual(calls[0]?.mcpServers?.playme, calls[1]?.mcpServers?.playme);
+});
+
+console.log("[ok] agent: gate, extração, snapshot com origem das faixas, tamanho e energia estimada, reorderSnapshot, detalhe das ferramentas com duração, runChat com turno gravado e pesos, pensamento e streaming, recusa do pensamento, nome do set, nota sem travar o turno, spotify, Waiter, ask_dj (respondida, pulada, abort, expirada, entrada inválida)");
