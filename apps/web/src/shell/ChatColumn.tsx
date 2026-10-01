@@ -7,6 +7,7 @@ import { Button, Composer } from "../components/playme/index.ts";
 import { pendingApproval, selectVersion } from "../state.ts";
 import { ChatItems } from "./ChatItems.tsx";
 import { COMPOSER_ID, Home } from "./Home.tsx";
+import { headData } from "./text.ts";
 import type { App } from "./useApp.ts";
 
 const NEAR_BOTTOM = 80; // px: mais perto do fim que isto = "acompanhando" a conversa
@@ -14,6 +15,7 @@ const NEAR_BOTTOM = 80; // px: mais perto do fim que isto = "acompanhando" a con
 export function ChatColumn({ app }: { app: App }) {
   const { state } = app;
   const version = selectVersion(state);
+  const data = headData(version); // linha mono com os dados da versão vista
   const set = state.set?.set;
   const latest = state.set?.versions.at(-1);
   const pending = pendingApproval(state) !== null;
@@ -69,7 +71,10 @@ export function ChatColumn({ app }: { app: App }) {
         {app.compact && <Button variant="ghost" size="sm" icon="list" label="Abrir menu" onClick={() => app.openSidebar()} />}
         {!app.home && (
           <>
-            <h1 className="body-strong chat__title">{app.title}</h1>
+            <div className="chat__titles">
+              <h1 className="body-strong chat__title">{app.title}</h1>
+              {data && <p className="chat-head__data mono">{data}</p>}
+            </div>
             {version && <span className="chat__chip mono">V{version.version}</span>}
             <span className="chat__grow" />
             {app.narrow && (

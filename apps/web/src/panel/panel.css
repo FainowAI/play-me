@@ -40,6 +40,14 @@
   gap: var(--space-2);
   color: var(--ink-subtle);
 }
+/* sinais (Sprint 5): a tag do estado do set pulsa devagar (1,6 s) enquanto espera a aprovação; é a única tag warn direta do cabeçalho */
+.pn-head__top > .pm-tag--warn {
+  animation: pm-pulse 1.6s var(--ease-standard) infinite;
+}
+/* o ThinkingStatus "Recalculando" (orb de 20) tem min-height de 24 px no DS e a linha das tags tem 22: sem isto o cabeçalho cresce 2 px quando ele aparece */
+.pn-head__top .pm-thinking {
+  min-height: 0;
+}
 .pn-title {
   margin: 0;
   text-wrap: balance;
@@ -119,6 +127,31 @@
   color: var(--ink);
   border-bottom-color: var(--ink);
 }
+/* indicador deslizante (Sprint 5): o traço de 2 px é o ::after da lista de abas, ancorado na aba selecionada, e desliza até a nova em 200 ms.
+   Sem anchor positioning fica o border-bottom de cada aba, como acima. */
+@supports (anchor-name: --pn-tab) {
+  .pn-tabs {
+    position: relative;
+    anchor-scope: --pn-tab;
+  }
+  .pn-tab[aria-selected="true"] {
+    anchor-name: --pn-tab;
+    border-bottom-color: transparent;
+  }
+  .pn-tabs::after {
+    content: "";
+    position: absolute;
+    position-anchor: --pn-tab;
+    left: anchor(left);
+    right: anchor(right);
+    bottom: -1px; /* cobre o hairline da lista, como o border-bottom da aba (margin -1px) */
+    height: 2px;
+    background: var(--ink);
+    transition:
+      left var(--duration-base) var(--ease-standard),
+      right var(--duration-base) var(--ease-standard);
+  }
+}
 
 /* corpo */
 .pn-body {
@@ -145,9 +178,35 @@
   gap: 2px;
   margin: 0 -8px;
 }
+/* entrada escalonada (Sprint 5): quando o painel abre, a aba muda ou a versão muda, cada linha (e card, e passo do guia) sobe em 200 ms com 30 ms
+   entre eles, até o 12º; soma-se à View Transition das linhas (motion.ts). Sem sibling-index() (navegador antigo) entram todas juntas. */
+.pn-rows > *,
+.pn-cards > li,
+.pn-guide > li {
+  animation: pm-rise var(--duration-base) var(--ease-out) backwards;
+  animation-delay: calc(min(sibling-index() - 1, 11) * 30ms);
+}
 .pn-sec {
   padding: var(--space-3) var(--space-2) var(--space-1);
   color: var(--ink-subtle);
+}
+/* rótulos-eyebrow (.label) das seções do painel e das camadas: um traço de 12 px em line-strong antes do texto (Sprint 5).
+   Ficam sem ele os cabeçalhos de coluna (dt), o "Set ·" do cabeçalho e o "Sua nota", que são rótulos de dado, não de seção. */
+.pn-sec::before,
+.pn-win__titles > .label::before,
+.pn-block > .label::before,
+.pn-guide-card > .label::before,
+.pn-dashed__text > .label::before,
+.pn-pref > .label::before,
+.pn-form > .label::before,
+.pn-keys__side > .label::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 1px;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+  background: var(--line-strong);
 }
 /* TrackRow a 352 px úteis: com a tag "A validar" (quase todo tom vem da web) a coluna do título encolhe a zero e as colunas
    de BPM, tom e energia saem do alinhamento. Aqui todas as linhas usam as mesmas colunas e a tag desce para a segunda
@@ -195,6 +254,7 @@
 }
 .pn-cards .pm-trans {
   max-width: 100%;
+  animation: none; /* o <li> já entra escalonado (pm-rise acima): sem subir duas vezes */
 }
 /* a 326 px úteis o par A/B em três colunas corta os títulos em "Nothi…": empilha, como o próprio DS faz em tela estreita */
 .pn-cards .pm-trans__pair {
@@ -660,6 +720,7 @@
 }
 .pn-conn__model {
   font: 500 12px/16px var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--ink-muted);
 }
 .pn-prefs {

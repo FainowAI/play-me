@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalizeWeights, scoreTransition } from "../services/dj-engine.js";
@@ -12,6 +12,7 @@ import {
   jevFromEnv,
   minConfidenceFromEnv,
   pearson,
+  ping,
   type ComparedPair,
   type JevAnswer,
   type JevFailure,
@@ -391,6 +392,45 @@ try {
   const flakyRun = await compareTransitions(PAIRS, createJev({ apiKey: "k", http: flaky.http, logPath }));
   assert.deepEqual([flakyRun.calls, flakyRun.pairs.length, flakyRun.errors.length], [5, 4, 1]);
 
+  // ---------- ping: teste de conexão do painel (Sprint 5, Q1); não é decisão de DJ, então não grava log ----------
+  const pingLog = join(dir, "ping.jsonl"); // caminho só do ping: se algum dia ele gravar, o arquivo aparece
+  const PONG = { model: "jev-1.13.0", answers: { ping: { type: "noul", noul: 0.97 } }, usage: { input_tokens: 25, output_tokens: 20 } };
+  const pinged = fakeHttp(() => ({ body: PONG }));
+  const pong = await createJev({ apiKey: "chave-de-teste", http: pinged.http, logPath: pingLog }).ping();
+  assert.ok(pong.ok, `esperava ok, veio ${JSON.stringify(pong)}`);
+  assert.equal(pong.model, "jev-1.13.0");
+  assert.ok(pong.latency_ms > 0, "latência medida pelo relógio do http");
+  assert.equal(pinged.sent.length, 1);
+  const pingSent = pinged.sent[0] as Sent;
+  assert.deepEqual(
+    [pingSent.url, pingSent.method, pingSent.headers.Authorization, pingSent.body.model],
+    ["https://api.typesafe.ai/v1/systemone", "POST", "Bearer chave-de-teste", "jev-latest"],
+  );
+  assert.deepEqual(pingSent.body.state, { ping: true });
+  // formato da doc da TypeSafe (docs.typesafe.ai/api): uma pergunta noul só com type e instructions
+  assert.deepEqual(pingSent.body.questions, { ping: { type: "noul", instructions: "O state é um teste de conexão?" } });
+  assert.equal(existsSync(pingLog), false, "o ping não grava em jev-calls.jsonl");
+  // HTTP 200 = conectado, mesmo com corpo fora do esperado; o modelo cai no nome da requisição
+  const bare = await createJev({ apiKey: "k", http: fakeHttp(() => ({ body: {} })).http, logPath: pingLog }).ping();
+  assert.ok(bare.ok);
+  assert.equal(bare.model, "jev-latest");
+  // sem chave: nenhuma requisição e o erro curto que o painel espera
+  const noKeyPing = await createJev({ apiKey: "  ", http: offline.http, logPath: pingLog }).ping();
+  assert.deepEqual(noKeyPing, { ok: false, error: "sem chave" });
+  assert.equal(offline.sent.length, 0, "sem chave não há requisição");
+  // falhas viram { ok: false }, nunca exceção: chave recusada, pergunta inválida (422), limite, timeout de 5 s, rede
+  const pingDown = async (reply: Reply, error: RegExp): Promise<void> => {
+    const result = await createJev({ apiKey: "k", http: fakeHttp(() => reply).http, logPath: pingLog }).ping();
+    assert.ok(!result.ok, `esperava falha, veio ${JSON.stringify(result)}`);
+    assert.match(result.error, error);
+  };
+  await pingDown({ status: 401 }, /HTTP 401.*TYPESAFE_API_KEY/);
+  await pingDown({ status: 422, body: { detail: "pergunta inválida" } }, /HTTP 422.*pergunta inválida/);
+  await pingDown({ status: 429, headers: { "Retry-After": "7" } }, /Limite de requisições do Jev.*HTTP 429/);
+  await pingDown({ throws: Object.assign(new Error("tempo"), { name: "TimeoutError" }) }, /não respondeu em 5 s/);
+  await pingDown({ throws: new TypeError("fetch failed") }, /Falha de rede/);
+  assert.equal(existsSync(pingLog), false, "nem o ping com falha grava log");
+
   // ---------- funções puras ----------
   assert.equal(pearson([1, 2, 3, 4], [2, 4, 6, 8]), 1);
   assert.equal(pearson([1, 2, 3, 4], [8, 6, 4, 2]), -1);
@@ -427,10 +467,21 @@ try {
     process.env.JEV_MIN_CONFIDENCE = "0.85";
     const fromEnv = jevFromEnv(dir, fakeHttp(brain).http);
     assert.deepEqual([fromEnv.available(), fromEnv.minConfidence], [true, 0.85]);
+    // ping() do módulo (o que o servidor do painel chama): chave do ambiente, ou a passada; sempre com http falso
+    const envPing = fakeHttp(() => ({ body: PONG }));
+    assert.ok((await ping(envPing.http)).ok);
+    assert.ok((await ping(envPing.http, "explicita")).ok);
+    assert.deepEqual(envPing.sent.map((s) => s.headers.Authorization), ["Bearer abc", "Bearer explicita"]);
+    // o Jev criado sem chave não herda a do ambiente (só o ping() do módulo, sem argumento, lê o ambiente)
+    const keyless = createJev({ http: offline.http, logPath: pingLog });
+    assert.deepEqual(await keyless.ping(), { ok: false, error: "sem chave" });
     process.env.TYPESAFE_API_KEY = "";
     delete process.env.JEV_MIN_CONFIDENCE;
     const empty = jevFromEnv(dir, fakeHttp(brain).http);
     assert.deepEqual([empty.available(), empty.minConfidence], [false, 0.7]);
+    assert.deepEqual(await ping(offline.http), { ok: false, error: "sem chave" });
+    assert.deepEqual(await empty.ping(), { ok: false, error: "sem chave" });
+    assert.equal(offline.sent.length, 0, "sem chave não há requisição");
   } finally {
     for (const [name, value] of [["TYPESAFE_API_KEY", saved.key], ["JEV_MIN_CONFIDENCE", saved.min]] as const) {
       if (value === undefined) delete process.env[name];
@@ -438,7 +489,7 @@ try {
     }
   }
 
-  console.log(`[ok] jev: parse, regra 8, decisão com fallback, log, jev_compare (concordância ${compared.agreement.type_pct}%, correlação ${compared.agreement.score_correlation})`);
+  console.log(`[ok] jev: parse, regra 8, decisão com fallback, log, jev_compare (concordância ${compared.agreement.type_pct}%, correlação ${compared.agreement.score_correlation}), ping`);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

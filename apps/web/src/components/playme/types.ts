@@ -135,6 +135,7 @@ export interface ApprovalGateProps {
   playlistName: string;
   trackCount: number;
   duration?: string;
+  tracks?: string[]; // títulos na ordem do set: a lista mostra os 5 primeiros e "e mais N"
   onApprove?: () => void;
   onReview?: () => void; // "Revisar ordem" = rejeitar: o set volta a rascunho
   disabled?: boolean; // clique já enviado

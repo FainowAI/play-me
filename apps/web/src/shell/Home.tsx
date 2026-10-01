@@ -1,6 +1,6 @@
 /** Main.dc.html (Início): orb em repouso, "Pista cheia.", composer com a playlist em contexto, três pedidos prontos e o aviso do Jev. */
 import { AgentOrb, Button, Composer, StatusTag } from "../components/playme/index.ts";
-import { playlistContext, suggestion } from "./text.ts";
+import { jevState, playlistContext } from "./text.ts";
 import type { App } from "./useApp.ts";
 
 export const COMPOSER_ID = "composer";
@@ -10,7 +10,8 @@ const ASKS = ["Warm up até peak time", "Sunrise com energia caindo", "Só faixa
 export function Home({ app }: { app: App }) {
   const { state } = app;
   const playlist = state.playlist;
-  const jev = state.status === null ? "Jev · sem dado" : state.status.jev ? "Jev · chave no .env" : "Jev · sem chave";
+  const jev = state.status ? jevState(state.status.jev) : null; // null: o servidor não respondeu
+  const connected = jev?.tone === "ok";
   return (
     <div className="home">
       <div className="home__inner">
@@ -33,15 +34,17 @@ export function Home({ app }: { app: App }) {
           />
           <div className="home__chips">
             {ASKS.map((label) => (
-              <Button key={label} variant="outline" size="sm" onClick={() => void app.send(suggestion(label, playlist?.name ?? null))}>
+              <Button key={label} variant="outline" size="sm" onClick={() => void app.ask(label)}>
                 {label}
               </Button>
             ))}
           </div>
         </div>
         <div className="home__jev">
-          <StatusTag tone="warn">{jev}</StatusTag>
-          <span className="home__jev-text">As transições usam o planejador de regras; o acesso ao Jev é validado na Sprint 4.</span>
+          <StatusTag tone={jev?.tone ?? "warn"}>{jev === null ? "Jev · sem dado" : connected ? "Jev conectado" : `Jev · ${jev.value}`}</StatusTag>
+          <span className="home__jev-text">
+            {connected ? "Decide o tipo de transição quando a confiança passa de 0,7; senão, valem as regras." : "Sem o Jev, as transições usam o planejador de regras."}
+          </span>
           <Button variant="ghost" size="sm" onClick={() => app.openSettings()}>
             Configurar
           </Button>

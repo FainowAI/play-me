@@ -141,6 +141,24 @@ assert.equal(repo.listPlans(c.version.id).length, 0);
   assert.equal(at(0)?.feedback?.rating, 3);
 }
 
+// ---------- renomear o set: só o nome (e o updated_at) mudam ----------
+{
+  const title = "Monte um set da playlist Eletro, 1h30";
+  const session = repo.createSession(title);
+  const { set } = repo.recordProposal(session.id, title, "classic", ["r1", "r2"], null, null);
+  await sleep();
+  const renamed = repo.renameSet(set.id, "Eletro · clássica");
+  assert.equal(renamed.name, "Eletro · clássica");
+  assert.ok(renamed.updated_at > set.updated_at);
+  assert.deepEqual([renamed.status, renamed.curve, renamed.created_at], [set.status, set.curve, set.created_at]);
+  assert.equal(repo.getCurrentSet(session.id)?.name, "Eletro · clássica");
+  assert.equal(repo.getSession(session.id)?.title, title); // o título da conversa não muda
+  // nova versão no mesmo set não desfaz o nome
+  const next = repo.recordProposal(session.id, title, "classic", ["r2", "r1"], null, null);
+  assert.deepEqual([next.set.id, next.set.name, next.version.version], [set.id, "Eletro · clássica", 2]);
+  assert.throws(() => repo.renameSet("nope", "x"), /inexistente/);
+}
+
 // ---------- aprovações ----------
 const ap = repo.createApproval(s1.id, d.set.id, "spotify_create_playlist_from_order", { ids: ["t9"] });
 assert.equal(ap.status, "pending");
@@ -209,4 +227,18 @@ try {
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
-console.log("[ok] repo: sessões, versões e snapshot, turnos, migração v1 para v2, máquina de estados, planos com nota 1–5 e aprovações");
+// ---------- P17: faixas dos últimos sets ----------
+{
+  const r = openRepo(":memory:");
+  const ids: string[] = [];
+  for (const [i, order] of [["a1", "a2"], ["b1"], ["c1", "a1"], ["d1"]].entries()) {
+    const s = r.createSession(`s${i}`);
+    ids.push(r.recordProposal(s.id, `set ${i}`, "classic", order, null, null).set.id);
+    await sleep();
+  }
+  assert.deepEqual(r.recentTrackIds(null, 3).sort(), ["a1", "b1", "c1", "d1"]); // os 3 mais recentes, sem repetição
+  assert.deepEqual(r.recentTrackIds(ids[3] ?? null, 3).sort(), ["a1", "a2", "b1", "c1"]); // o set atual não conta
+  assert.deepEqual(r.recentTrackIds(null, 1), ["d1"]);
+  r.close();
+}
+console.log("[ok] repo: sessões, versões e snapshot, turnos, migração v1 para v2, máquina de estados, planos com nota 1–5, renomear o set, aprovações e faixas dos últimos sets (P17)");

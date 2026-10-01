@@ -102,8 +102,8 @@ intro #61AFDA · groove #7F8699 · build #F5AE39 · drop #FF6557 · break #58C8A
 - Espaço (grade 4px): 2 · 4 · 8 · 12 · 16 · 24 · 32 · 48 · 64.
 - Raio: pill 999 (todo botão) · 20 (cards, bolhas, composer) · 12 (linhas, inputs, menus) · 6 (chips) · 4 (segmentos).
 - Sombra só em flutuante: `0 16px 40px rgba(0,0,0,.55)` (dark). Cards planos com `line` 1px.
-- Movimento: 120ms hover · 200ms abrir · 400ms reordenar; `cubic-bezier(0.4,0,0.2,1)`. Pressed = scale(0.97). Respeitar `prefers-reduced-motion`.
-- Única animação contínua: o orb de pensamento (4.1). Fora dele, nada gira, quica ou brilha.
+- Movimento: 120ms hover · 200ms abrir/entrar/sair · 400ms reordenar e desenhar o arco; `--ease-standard` na troca, `--ease-out` na entrada. Pressed = scale(0.97). Respeitar `prefers-reduced-motion` (nada se move nem pisca).
+- Movimento contínuo só enquanto o agente trabalha ou algo espera o DJ: o orb (4.1), o ponto do wordmark, a tag "Aguardando aprovação" e o cursor do texto que ainda chega. Fora disso, nada gira, quica ou brilha. Vocabulário completo em 4.2 (D41).
 
 ### 4.1 Pensamento (orbs)
 
@@ -123,9 +123,31 @@ Envolver em `AgentOrb` (`apps/web/src/components/playme/AgentOrb.tsx`) com o map
 | shipping | shaping | `spotify_create_playlist_from_order`, `export_*` |
 | working | working | Qualquer outra |
 
-- Tamanhos: 64 só na tela vazia · 32 no cabeçalho do painel do set recalculando · 20 no `ThinkingStatus`, no `ToolCall` rodando e na sidebar.
+- Tamanhos: 64 no Início (com anel de 88 px em `line`, `dots` 1,1 e `dotSize` 1,15) · 32 no cabeçalho da resposta em andamento · 20 na sidebar, no `ToolCall` rodando e no cabeçalho do painel do set ("Recalculando").
 - `ThinkingStatus`: orb 20 + verbo no gerúndio (`ink-muted`) + progresso real em mono (`ink-subtle`): "Analisando o áudio · 12/42 faixas". Abre a resposta e some quando o texto começa a chegar.
-- Sem `color`, sem `gravity`, `speed` 1. Um orb animado por região. Terminou: sai o orb, entra o ícone de estado.
+- Sem `color`, sem `gravity`. `speed` por atividade: idle 0,8 · reading 1,1 · scoring 1,0 · planning 1,0 · composing 0,9 · shipping 1,2 · working 1,0. Troca de atividade em crossfade de 200 ms. Um orb animado por região. Terminou: o orb desvanece (200 ms), entra o ícone de estado.
+
+### 4.2 Vocabulário de movimento (D41, Sprint 5)
+
+A fonte é `apps/web/src/motion.css` (uma linha por animação no topo do arquivo). Resumo:
+
+| Nome | Duração | Gatilho |
+|---|---|---|
+| pm-rise | 200 ms | item novo no chat (mensagem, card, gate, Pensamento) e linhas/cards do painel: fade + 6 px de subida; 30 ms de atraso por item na releitura (até o 12º) e 40 ms nos pedidos do Início |
+| pm-pop | 200 ms | pílula de ferramenta entra (scale .96 → 1) |
+| pm-fade-in / pm-fade-out | 200 ms | crossfade: o orb troca de atividade, o ícone da pílula troca de estado, o verbo do ThinkingStatus entra |
+| pm-leave | 200 ms | bloco mantido montado depois do fim que desvanece recolhendo a altura (orb ao terminar o turno) |
+| pm-blink | 1 s | cursor do texto que ainda chega (Pensamento vivo e rascunho da resposta) |
+| pm-pulse | 1,6 s | tag "Aguardando aprovação" enquanto o set espera o DJ |
+| pm-beat | 1,6 s | ponto do wordmark enquanto o agente trabalha |
+| pm-draw | 400 ms | SetArc: traço desenhado quando a versão muda (gradiente por energia, área e pontos em fade) |
+| camadas | 200 ms | gaveta desliza e janela faz fade + scale (.97 → 1) ao abrir e ao sair; o scrim faz fade junto |
+| indicadores | 200 ms | abas do painel e barra da linha ativa da sidebar deslizam (anchor positioning) |
+| seta | 200 ms | a seta do "Pensamento" gira ao abrir/fechar |
+| hover | 120 ms | cards (borda line-strong + 1 px de altura), KeyBadge e EnergyMeter (scale 1,04) na linha |
+| foco | 200 ms | anel `--focus-ring` do composer |
+
+Identidade que veio junto: eyebrows com traço de 12 px em `line-strong`; bolha do usuário com canto inferior direito de 6 px; linha mono com os dados do set no cabeçalho do chat (faixas, minutos, BPM mín–máx, tom da 1ª → última, curva); `tabular-nums` em todo número.
 - Proibido: spinner, barra indeterminada, "Pensando…" genérico.
 
 ## 5. Layout do app

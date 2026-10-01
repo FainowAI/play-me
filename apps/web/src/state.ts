@@ -17,7 +17,9 @@ export type ChatItem =
   | { kind: "tool"; id: string; tool: string; detail: string; status: ToolStatus; activity: Activity; summary?: Record<string, number | boolean | null> } // summary: números das ferramentas de metadados (card de cobertura)
   | { kind: "approval"; id: string; set_id: string | null; playlist_name: string; track_count: number; track_ids: string[]; status: ApprovalStatus | "expired" }
   | { kind: "set"; id: string; set_id: string; version: number; status: SetStatus } // marcador: a tela mostra o card da passagem mais arriscada e os atalhos
-  | { kind: "error"; id: string; text: string };
+  | { kind: "error"; id: string; text: string }
+  | { kind: "thinking"; id: string; text: string; live: boolean } // Sprint 5: raciocínio do agente (live = ainda chegando)
+  | { kind: "draft"; id: string; text: string }; // Sprint 5: texto da resposta ainda em streaming
 
 export type Overlay = { kind: "transition"; position: number } | { kind: "track"; trackId: string } | { kind: "settings" } | null;
 
@@ -87,9 +89,24 @@ const CREATE_TOOL = "spotify_create_playlist_from_order";
 export function applyEvent(items: ChatItem[], event: ServerEvent): ChatItem[] {
   switch (event.type) {
     case "text":
-      return [...items, { kind: "text", id: nextId(), text: event.text }];
+      return [...withoutDraft(items), { kind: "text", id: nextId(), text: event.text }];
+    case "thinking_delta": {
+      const last = items[items.length - 1];
+      if (last?.kind === "thinking" && last.live) return [...items.slice(0, -1), { ...last, text: last.text + event.text }];
+      return [...items, { kind: "thinking", id: nextId(), text: event.text, live: true }];
+    }
+    case "thinking": {
+      const idx = items.findLastIndex((it) => it.kind === "thinking" && it.live);
+      if (idx >= 0) return items.map((it, i) => (i === idx && it.kind === "thinking" ? { ...it, text: event.text, live: false } : it));
+      return [...items, { kind: "thinking", id: nextId(), text: event.text, live: false }];
+    }
+    case "text_delta": {
+      const last = items[items.length - 1];
+      if (last?.kind === "draft") return [...items.slice(0, -1), { ...last, text: last.text + event.text }];
+      return [...settleThinking(items), { kind: "draft", id: nextId(), text: event.text }];
+    }
     case "tool_start":
-      return [...items, { kind: "tool", id: event.tool_use_id, tool: event.tool, detail: event.detail, status: "running", activity: activityForTool(event.tool) }];
+      return [...settle(items), { kind: "tool", id: event.tool_use_id, tool: event.tool, detail: event.detail, status: "running", activity: activityForTool(event.tool) }];
     case "tool_end":
       return items.map((it) =>
         it.kind === "tool" && it.id === event.tool_use_id
@@ -107,10 +124,23 @@ export function applyEvent(items: ChatItem[], event: ServerEvent): ChatItem[] {
     case "set":
       return [...items, { kind: "set", id: nextId(), set_id: event.set_id, version: event.version, status: event.status }];
     case "error":
-      return [...items, { kind: "error", id: nextId(), text: event.message }];
+      return [...settle(items), { kind: "error", id: nextId(), text: event.message }];
+    case "done":
+      return settle(items);
     default:
-      return items; // session, done
+      return items; // session
   }
+}
+
+/** Fim de um bloco: rascunho vira texto e pensamento vivo vira final (o SDK sempre manda o bloco completo depois; se não mandar, nada se perde). */
+function settle(items: ChatItem[]): ChatItem[] {
+  return settleThinking(items).map((it) => (it.kind === "draft" ? { kind: "text", id: it.id, text: it.text } : it));
+}
+function settleThinking(items: ChatItem[]): ChatItem[] {
+  return items.map((it) => (it.kind === "thinking" && it.live ? { ...it, live: false } : it));
+}
+function withoutDraft(items: ChatItem[]): ChatItem[] {
+  return items.filter((it) => it.kind !== "draft");
 }
 
 /** Reconstrói o chat a partir dos turnos gravados (GET /api/sessions/:id). */
@@ -127,6 +157,7 @@ export function itemsFromTurns(turns: Turn[]): ChatItem[] {
 function activityAfter(items: ChatItem[], event: ServerEvent, busy: boolean): Activity {
   if (!busy) return "idle";
   if (event.type === "approval") return "idle"; // gate aguardando aprovação = breathing
+  if (event.type === "thinking_delta" || event.type === "text_delta" || event.type === "thinking") return "composing";
   const running = [...items].reverse().find((it) => it.kind === "tool" && it.status === "running");
   if (running && running.kind === "tool") return running.activity;
   return "composing";

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { AuthRequiredError } from "spotify-dj-mcp-server/dist/services/auth.js";
 import type { MixGuideStep } from "spotify-dj-mcp-server/dist/types.js";
 import { ApprovalWaiter } from "../approvals.js";
+import { createJevStatus } from "../jev-status.js";
 import { openRepo, type Repo } from "../repo.js";
 import { createHttpServer, type HttpDeps } from "../server.js";
 import { InvalidSettingsError, SettingsStore, validateWeights } from "../settings.js";
@@ -40,7 +41,7 @@ const repo = {
 
 const dir = mkdtempSync(join(tmpdir(), "playme-http-"));
 process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
-const STATUS: Status = { model: "claude-haiku-4-5", anthropic: true, spotify: { connected: true }, reccobeats: true, jev: false };
+const STATUS: Status = { model: "claude-haiku-4-5", anthropic: true, spotify: { connected: true }, reccobeats: true, jev: { key: true, connected: null, model: null } };
 const PLAYLISTS: Playlist[] = [{ id: "pl1", name: "Eletro", total: 557, url: "https://open.spotify.com/playlist/pl1" }];
 let playlistsImpl: () => Promise<Playlist[]> = async () => PLAYLISTS;
 const settingsFile = join(dir, "settings.json");
@@ -289,4 +290,71 @@ try {
     real.close();
   }
 }
-console.log("[ok] http: sessions, chat SSE, validações, approvals, CORS, status, playlists, configurações, sessão com turnos, set com snapshot e guia, notas das passagens, 404");
+// ---------- status do Jev: null até o primeiro ping responder, depois o resultado; novo ping só depois de 30 min ----------
+{
+  type Ping = { ok: true; model: string } | { ok: false; error: string };
+  let clock = 1_000_000;
+  let pings = 0;
+  let answer: (result: Ping) => void = () => undefined;
+  const probe = {
+    available: () => true,
+    ping: () => {
+      pings += 1;
+      return new Promise<Ping>((resolve) => {
+        answer = resolve;
+      });
+    },
+  };
+  const jev = createJevStatus(probe, () => clock);
+  const { server: s, base: b } = await listen({ repo, waiter, ...extra, status: () => ({ ...STATUS, jev: jev.get() }), chat: async () => undefined });
+  const logged: unknown[][] = [];
+  const log = console.error;
+  console.error = (...args: unknown[]) => void logged.push(args); // o servidor loga o detalhe da falha do Jev (esperado aqui)
+  try {
+    const statusJev = async () => ((await (await fetch(`${b}/api/status`)).json()) as Status).jev;
+    const PENDING = { key: true, connected: null, model: null };
+    assert.deepEqual(await statusJev(), PENDING); // o ping está no ar e ainda não respondeu
+    assert.deepEqual(await statusJev(), PENDING);
+    assert.equal(pings, 1); // pedidos repetidos dividem o ping em andamento
+    answer({ ok: true, model: "jev-1.13.0" });
+    await jev.refresh();
+    const CONNECTED = { key: true, connected: true, model: "jev-1.13.0" };
+    assert.deepEqual(await statusJev(), CONNECTED);
+    clock += 29 * 60_000;
+    assert.deepEqual(await statusJev(), CONNECTED);
+    assert.equal(pings, 1); // dentro dos 30 min: sem ping novo
+    clock += 2 * 60_000;
+    assert.deepEqual(await statusJev(), CONNECTED); // passou de 30 min: devolve o último valor e refaz o ping por trás
+    assert.equal(pings, 2);
+    answer({ ok: false, error: "O Jev recusou a chave (HTTP 401) sk-secreta" });
+    await jev.refresh();
+    const body = await (await fetch(`${b}/api/status`)).text();
+    assert.deepEqual((JSON.parse(body) as Status).jev, { key: true, connected: false, model: null }); // falha: connected false
+    assert.doesNotMatch(body, /401|sk-secreta/); // nenhum detalhe na API...
+    assert.equal(logged.length, 1); // ...ele fica no log do servidor
+    clock += 60_000;
+    await statusJev();
+    assert.equal(pings, 2); // a falha também espera os 30 min
+    // sem chave o Jev nem é chamado; ping que lança ou rejeita vira connected false, nunca derruba o processo
+    let asked = false;
+    const noKey = createJevStatus({
+      available: () => false,
+      ping: async () => {
+        asked = true;
+        return { ok: true, model: "x" };
+      },
+    });
+    await noKey.refresh();
+    assert.deepEqual([noKey.get(), asked], [{ key: false, connected: false, model: null }, false]);
+    for (const ping of [() => { throw new Error("síncrono"); }, async () => { throw new Error("rejeitado"); }]) {
+      const broken = createJevStatus({ available: () => true, ping });
+      await broken.refresh();
+      assert.deepEqual(broken.get(), { key: true, connected: false, model: null });
+    }
+  } finally {
+    console.error = log;
+    s.closeAllConnections();
+    await new Promise((r) => s.close(r));
+  }
+}
+console.log("[ok] http: sessions, chat SSE, validações, approvals, CORS, status, playlists, configurações, sessão com turnos, set com snapshot e guia, notas das passagens, status do Jev, 404");

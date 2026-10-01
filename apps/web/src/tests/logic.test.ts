@@ -70,6 +70,21 @@ const events: ServerEvent[] = [
   assert.deepEqual(items.map((i) => i.kind), ["user", "approval"]);
   assert.equal(items[1]?.kind === "approval" && items[1].status, "approved");
   assert.equal(applyEvent([], { type: "error", message: "x" })[0]?.kind, "error");
+  // Sprint 5: pensamento e streaming
+  let live = applyEvent([], { type: "thinking_delta", text: "Vou " });
+  live = applyEvent(live, { type: "thinking_delta", text: "montar." });
+  assert.deepEqual(live, [{ kind: "thinking", id: live[0]?.id ?? "", text: "Vou montar.", live: true }]);
+  live = applyEvent(live, { type: "thinking", text: "Vou montar o set." });
+  assert.equal(live[0]?.kind === "thinking" && live[0].live, false);
+  assert.equal(live[0]?.kind === "thinking" && live[0].text, "Vou montar o set.");
+  live = applyEvent(live, { type: "text_delta", text: "Set " });
+  live = applyEvent(live, { type: "text_delta", text: "pronto." });
+  assert.equal(live[1]?.kind === "draft" && live[1].text, "Set pronto.");
+  live = applyEvent(live, { type: "text", text: "Set pronto." });
+  assert.deepEqual(live.map((i) => i.kind), ["thinking", "text"]);
+  // rascunho sem bloco final vira texto quando a ferramenta começa
+  const cut = applyEvent(applyEvent([], { type: "text_delta", text: "a" }), { type: "tool_start", tool: "dj_build_set", tool_use_id: "t9", detail: "" });
+  assert.deepEqual(cut.map((i) => i.kind), ["text", "tool"]);
   // summary do tool_end fica no item (card de cobertura)
   const cov = applyEvent(applyEvent([], { type: "tool_start", tool: "metadata_coverage", tool_use_id: "c1", detail: "Eletro" }), { type: "tool_end", tool: "metadata_coverage", tool_use_id: "c1", is_error: false, detail: "Mixar 22 · web 414", summary: { total: 557, mixar: 22, web: 414, a_validar: 0, pendente: 121 } });
   assert.equal(cov[0]?.kind === "tool" && cov[0].summary?.pendente, 121);

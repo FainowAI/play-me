@@ -33,7 +33,7 @@
   }
 }
 
-/* a entrada em fade de 200 ms das mensagens e pílulas de ferramenta já vem do playme.css (pm-fade-in): não duplicada aqui */
+/* a entrada das mensagens (pm-rise), cards (.cov, .sent, .think) e pílulas (pm-pop) vem do motion.css e do playme.css: não duplicada aqui */
 
 /* ---------- sidebar (Sidebar.dc.html) ---------- */
 .sb {
@@ -57,6 +57,10 @@
 }
 .sb__brand span {
   color: var(--signal); /* o ponto do wordmark é, com o "Aprovar e criar", o único uso de signal */
+}
+/* o ponto pulsa enquanto o agente trabalha: o Sidebar põe data-busy no <nav> (Sprint 5) */
+.sb[data-busy="true"] .sb__brand span {
+  animation: pm-beat 1.6s var(--ease-standard) infinite;
 }
 .sb__scroll {
   flex: 1;
@@ -120,6 +124,47 @@
   line-height: 16px;
   color: var(--ink-subtle);
 }
+/* conversa sem set (Sprint 5): "conversa" no lugar do estado; o contorno tracejado diz que ainda não é um set */
+.sb__tag--conversa {
+  flex: none;
+  padding: 0 4px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--ink-subtle);
+}
+/* linha ativa: barra de 2 px em ink à esquerda que desliza entre as linhas da lista em 200 ms. Anchor positioning: a barra é o ::before da lista,
+   ancorado na linha com aria-current. Sem suporte, fica só o fundo da linha ativa (regra do .sb__row acima). */
+@supports (anchor-name: --sb-current) {
+  .sb__group ul {
+    position: relative;
+    anchor-scope: --sb-current; /* cada lista acha a própria linha ativa */
+  }
+  .sb__row[aria-current="true"] {
+    anchor-name: --sb-current;
+  }
+  .sb__group ul::before {
+    content: "";
+    position: absolute;
+    position-anchor: --sb-current;
+    left: 0;
+    width: 2px;
+    top: calc(anchor(top) + 8px);
+    bottom: calc(anchor(bottom) + 8px);
+    border-radius: 1px;
+    background: var(--ink);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      top var(--duration-base) var(--ease-standard),
+      bottom var(--duration-base) var(--ease-standard),
+      opacity var(--duration-base) var(--ease-standard);
+  }
+  .sb__group ul:has(.sb__row[aria-current="true"])::before {
+    opacity: 1;
+  }
+}
 .sb__count {
   flex: none;
   font: 500 12px/16px var(--font-mono);
@@ -162,6 +207,10 @@
   background: transparent;
   border: 1.5px solid var(--warn);
 }
+.sb__dot[data-tone="neutral"] {
+  background: transparent;
+  border: 1.5px solid var(--ink-subtle); /* ainda verificando (Jev): contorno neutro, nem verde nem aviso */
+}
 
 /* ---------- chat (Analisando, SetProposto, Aprovacao e Enviado.dc.html) ---------- */
 .chat {
@@ -194,6 +243,33 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* cabeçalho com os dados do set (Sprint 5): o título e, embaixo, uma linha mono em ink-subtle ("21 faixas · 103 min · 122–131 BPM · 7B → 3A · curva clássica").
+   O bloco encolhe (reticências) antes do chip de versão e do botão; abaixo de 720 px a linha some. */
+.chat__titles {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-head__data {
+  flex: 0 100 auto; /* solta no cabeçalho (sem o .chat__titles), encolhe muito antes do título e do botão; dentro do bloco empilhado não muda nada */
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 12px/16px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-subtle);
+}
+.chat__head .pm-btn {
+  flex: none;
+  white-space: nowrap; /* "Painel do set" não quebra em três linhas quando o cabeçalho aperta */
+}
+@media (width < 720px) {
+  .chat-head__data {
+    display: none; /* sem largura para o título e a linha: os dados seguem no painel do set */
+  }
 }
 .chat__chip {
   flex: none;
@@ -260,6 +336,10 @@
 .home__sub {
   color: var(--ink-muted);
 }
+/* o anel de 88 px do orb (.pm-orb--ring) sai 12 px da caixa dele: reserva o espaço em cima para a página rolável não cortá-lo */
+.home__hero .pm-orb--ring {
+  margin-top: var(--space-3);
+}
 .home__ask {
   width: 100%;
   display: flex;
@@ -271,6 +351,11 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
+}
+/* os pedidos prontos entram escalonados: 200 ms cada, 40 ms entre eles (sem sibling-index() entram juntos) */
+.home__chips > .pm-btn {
+  animation: pm-rise var(--duration-base) var(--ease-out) backwards;
+  animation-delay: calc((sibling-index() - 1) * 40ms);
 }
 .home__jev {
   box-sizing: border-box;
@@ -328,6 +413,60 @@ ol.md-list {
 .note {
   color: var(--ink-muted);
 }
+/* Pensamento do agente (Sprint 5): <details class="think"> do ChatItems. Mono 12/18 em ink-subtle, filete de 2 px em line à esquerda, seta que gira em 200 ms
+   e bloco que recolhe em 200 ms (::details-content). Ao vivo (data-live="true") fica aberto e o cursor pisca no fim do texto (motion.css). */
+.think {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line);
+  font: 400 12px/18px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-subtle);
+  interpolate-size: allow-keywords;
+}
+.think > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+.think > summary::-webkit-details-marker {
+  display: none;
+}
+.think > summary:hover {
+  color: var(--ink-muted);
+}
+.think > summary::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(-45deg); /* fechado: aponta para a direita */
+  transition: transform var(--duration-base) var(--ease-standard);
+}
+.think[open] > summary::before {
+  transform: translateY(-1px) rotate(45deg); /* aberto: ⌄ */
+}
+.think pre {
+  margin: var(--space-2) 0 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.think::details-content {
+  block-size: 0;
+  overflow-y: clip;
+  transition:
+    block-size var(--duration-base) var(--ease-standard),
+    content-visibility var(--duration-base) allow-discrete;
+}
+.think[open]::details-content {
+  block-size: auto;
+}
 .user-text {
   white-space: pre-wrap;
 }
@@ -355,6 +494,14 @@ ol.md-list {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+.cov:hover,
+.sent:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px); /* hover dos cards, como o TransitionCard (playme.css) */
 }
 .cov__nums {
   display: grid;
@@ -423,6 +570,9 @@ ol.md-list {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
 }
 .sent__icon {
   width: 64px;
@@ -536,10 +686,26 @@ ol.md-list {
     opacity: 0;
   }
 }
+/* sair (Sprint 5): o mesmo caminho ao contrário, pelas mesmas transições de 200 ms. O Overlay.tsx liga data-closing (Esc, clique no scrim)
+   e mantém o <dialog> montado até o transitionend (máx. 250 ms); só então o onClose do pai desmonta. */
+.overlay[data-closing][data-side="right"] {
+  transform: translateX(100%);
+}
+.overlay[data-closing][data-side="left"] {
+  transform: translateX(-100%);
+}
+.overlay[data-closing][data-kind="window"] {
+  opacity: 0;
+  transform: scale(0.97);
+}
+.overlay[data-closing]::backdrop {
+  opacity: 0;
+}
 
-/* prefers-reduced-motion: o index.css zera as transições dos elementos; o ::backdrop não entra no `*` */
+/* prefers-reduced-motion: o index.css zera as transições dos elementos; o ::backdrop e o ::details-content não entram no `*` */
 @media (prefers-reduced-motion: reduce) {
-  .overlay::backdrop {
+  .overlay::backdrop,
+  .think::details-content {
     transition: none;
   }
 }

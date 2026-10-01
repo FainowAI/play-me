@@ -8,6 +8,7 @@ import { API_BASE, ApiError, api, streamChat } from "../api.ts";
 import { initialState, itemsFromTurns, nextId, reducer, type AppState, type PanelTab, type Theme } from "../state.ts";
 import type { Playlist, ServerEvent, SetStatus, Settings } from "../types.ts";
 import { withViewTransition } from "./motion.ts";
+import { initialPlaylist, suggestion } from "./text.ts";
 
 const media = (query: string) => ({
   subscribe: (notify: () => void) => {
@@ -29,6 +30,22 @@ function storedTheme(): Theme {
     // ponytail: localStorage pode lançar (modo privado, dados bloqueados); segue o tema padrão
   }
   return initialState.theme;
+}
+
+const PLAYLIST_KEY = "playme.playlist"; // id da última playlist usada (escolhida na sidebar ou num pedido pronto)
+function storedPlaylist(): string | null {
+  try {
+    return localStorage.getItem(PLAYLIST_KEY);
+  } catch {
+    return null; // ponytail: sem storage, vale a maior playlist
+  }
+}
+function rememberPlaylist(id: string): void {
+  try {
+    localStorage.setItem(PLAYLIST_KEY, id);
+  } catch {
+    // ponytail: sem persistência, vale só até recarregar
+  }
 }
 
 const errorText = (e: unknown): string => (e instanceof ApiError ? e.message : `Sem resposta do servidor em ${API_BASE}. Ele está rodando?`);
@@ -58,7 +75,14 @@ export function useApp() {
 
   useEffect(() => {
     api.status().then((status) => dispatch({ type: "status", status })).catch(() => undefined);
-    api.playlists().then((r) => dispatch({ type: "playlists", playlists: r.items })).catch(() => dispatch({ type: "playlists", playlists: [] })); // 503: Spotify não conectado
+    api
+      .playlists()
+      .then((r) => {
+        dispatch({ type: "playlists", playlists: r.items });
+        const last = initialPlaylist(r.items, storedPlaylist()); // o reducer fica com a primeira da lista; aqui vale a última usada, senão a maior
+        if (last) dispatch({ type: "playlist", playlist: last });
+      })
+      .catch(() => dispatch({ type: "playlists", playlists: [] })); // 503: Spotify não conectado
     refreshSessions();
     api.settings().then((settings) => dispatch({ type: "settings", settings })).catch(() => undefined);
     // recarregar a página não perde a conversa: o id vive no hash (#s=<id>)
@@ -67,6 +91,18 @@ export function useApp() {
     return () => turn.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Jev "verificando": o ping do servidor ainda não respondeu (~0,5 s depois do start); relê o status a cada 3 s, no máximo 5 vezes
+  const verifying = state.status?.jev.key === true && state.status.jev.connected === null;
+  useEffect(() => {
+    if (!verifying) return;
+    let tries = 0;
+    const t = setInterval(() => {
+      if (++tries >= 5) clearInterval(t);
+      api.status().then((status) => dispatch({ type: "status", status })).catch(() => undefined);
+    }, 3000);
+    return () => clearInterval(t);
+  }, [verifying]);
 
   useEffect(() => {
     history.replaceState(null, "", state.sessionId ? `#s=${encodeURIComponent(state.sessionId)}` : location.pathname);
@@ -125,6 +161,7 @@ export function useApp() {
         if (state.sessionId === null) refreshSessions(); // conversa nova: a linha da sidebar (com o orb) já existe
       } else if (event.type === "set") {
         void loadSet(event.set_id, event.status);
+        refreshSessions(); // o servidor renomeia o set antes deste evento: a lista da sidebar já traz o nome novo
       }
     };
     try {
@@ -150,6 +187,14 @@ export function useApp() {
     dispatch({ type: "send", id: nextId(), text: message });
     void stream(ac, message);
     return true;
+  };
+
+  /** Pedido pronto do Início: a mensagem leva a playlist em contexto, que passa a ser a última usada. */
+  const ask = (label: string): boolean => {
+    const { playlist } = state;
+    const sent = send(suggestion(label, playlist?.name ?? null));
+    if (sent && playlist) rememberPlaylist(playlist.id);
+    return sent;
   };
 
   /**
@@ -241,12 +286,14 @@ export function useApp() {
     narrow, // < 1100 px: painel do set em gaveta
     compact, // < 720 px: sidebar em gaveta
     send,
+    ask,
     approve: (approvalId: string) => decide(approvalId, "approved"),
     reject: (approvalId: string) => decide(approvalId, "rejected"),
     newChat,
     openSession,
     selectPlaylist: (playlist: Playlist) => {
       dispatch({ type: "playlist", playlist });
+      rememberPlaylist(playlist.id);
       dispatch({ type: "sidebar", open: false });
     },
     setTheme,

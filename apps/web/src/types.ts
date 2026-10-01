@@ -179,6 +179,9 @@ export type ServerEvent =
       /** Só na releitura (GET /api/sessions/:id): estado atual da approval. Ausente = pending, ao vivo. */
       status?: ApprovalStatus;
     }
+  | { type: "thinking_delta"; text: string } // Sprint 5: pensamento ao vivo (não gravado no turno)
+  | { type: "text_delta"; text: string } // Sprint 5: texto da resposta ao vivo (não gravado)
+  | { type: "thinking"; text: string } // Sprint 5: bloco de pensamento completo (gravado no turno)
   | { type: "done"; cost_usd: number | null }
   | { type: "error"; message: string };
 
@@ -207,7 +210,8 @@ export interface Status {
   anthropic: boolean; // chave presente
   spotify: { connected: boolean }; // tokens do MCP presentes em ~/.spotify-dj-mcp
   reccobeats: true; // sem chave, sempre disponível
-  jev: boolean; // TYPESAFE_API_KEY presente (acesso validado só na Sprint 4, D28)
+  /** Sprint 5: key = TYPESAFE_API_KEY presente; connected = ping real (null enquanto não respondeu); model = ex.: jev-1.13.0. */
+  jev: { key: boolean; connected: boolean | null; model: string | null };
 }
 
 /** GET /api/playlists: playlists do usuário no Spotify (cache de 5 min no servidor). */

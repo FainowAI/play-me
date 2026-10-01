@@ -216,6 +216,50 @@ export class SpotifyClient {
   }
 }
 
+// ---------- Playlist pelo nome (P14) ----------
+
+const PLAYLIST_NAME_SCAN = 200; // playlists lidas para achar uma pelo nome: o mesmo teto do servidor do painel
+
+/** Sem acento, sem caixa e sem espaços nas pontas: " Eletrônica" = "eletronica". */
+const plain = (text: string): string => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+
+/** As playlists com este nome (igualdade, não trecho: "Eletro" não casa "[DJ MIX] Eletro"), uma por id (o Spotify pode repetir). */
+export function playlistsNamed(name: string, playlists: PlaylistSummary[]): PlaylistSummary[] {
+  const wanted = plain(name);
+  return [...new Map(playlists.filter((p) => plain(p.name) === wanted).map((p) => [p.id, p])).values()];
+}
+
+/**
+ * ID a partir de ID, URI, link ou NOME de uma playlist do usuário (as primeiras 200, como o servidor do painel).
+ * Sem achar, ou com duas de mesmo nome, o erro diz o que fazer. Toda ferramenta que lê uma playlist passa por aqui.
+ * ponytail: nome de exatamente 22 letras/dígitos vale como ID; sem cache, são de 1 a 4 chamadas por pedido.
+ */
+export async function resolvePlaylistId(client: Pick<SpotifyClient, "listMyPlaylists">, input: string): Promise<string> {
+  try {
+    return parseSpotifyId(input, "playlist");
+  } catch (error) {
+    if (/^(https?:|spotify:)/i.test(input.trim())) throw error; // link ou URI quebrado: a mensagem do parse já diz o que fazer
+  }
+  const mine: PlaylistSummary[] = [];
+  for (let offset = 0; offset < PLAYLIST_NAME_SCAN; offset += LIMITS.pageMax) {
+    const page = await client.listMyPlaylists(LIMITS.pageMax, offset);
+    mine.push(...page.items);
+    if (offset + LIMITS.pageMax >= page.total) break;
+  }
+  const found = playlistsNamed(input, mine);
+  if (found.length === 1) return (found[0] as PlaylistSummary).id;
+  if (found.length === 0) {
+    throw new Error(
+      `Playlist "${input}" não encontrada entre as suas (li até ${PLAYLIST_NAME_SCAN}). Confira o nome com spotify_list_my_playlists ou passe o ID, a URI ou o link.`,
+    );
+  }
+  throw new Error(
+    `Mais de uma playlist se chama "${input}". Pergunte ao usuário qual ou passe o ID:\n${found
+      .map((p) => `- ${p.name} · ${p.total_items ?? "?"} itens · id: ${p.id}`)
+      .join("\n")}`,
+  );
+}
+
 // ---------- Tipos crus da API e conversores ----------
 
 interface RawPaging<T> {

@@ -6,13 +6,13 @@ import { join } from "node:path";
 import { AnalysisStore } from "spotify-dj-mcp-server/dist/services/analysis-store.js";
 import { AuthRequiredError } from "spotify-dj-mcp-server/dist/services/auth.js";
 import { ApprovalWaiter } from "../approvals.js";
-import { extractCreated, extractProposal, finishCreate, gate, recordFromResult, reorderSnapshot, runChat, structuredOf, summarize, type ChatDeps, type TurnCtx } from "../agent.js";
+import { extractCreated, extractProposal, finishCreate, gate, recordFromResult, reorderSnapshot, runChat, structuredOf, summarize, thinkingTokensFrom, type ChatDeps, type TurnCtx } from "../agent.js";
 import { openRepo, type Repo } from "../repo.js";
 import { createSpotify } from "../spotify.js";
 import type { Approval, PlanInput, ServerEvent, SetRow, SetSnapshot, SetStatus, SetVersion } from "../types.js";
 
 /** Repo falso em memória: só o que o agente usa. */
-function fakeRepo() {
+function fakeRepo(title = "Eletro") {
   const now = "2026-01-01T00:00:00Z";
   let set: SetRow | undefined;
   const versions: SetVersion[] = [];
@@ -21,10 +21,11 @@ function fakeRepo() {
   const saved = new Map<string, PlanInput[]>(); // planos por versão, para o listPlans
   const turns: { userMessage: string; events: ServerEvent[]; cost: number | null }[] = [];
   const repo = {
-    getSession: () => ({ id: "c1", agent_session_id: null, title: "Eletro", created_at: now, updated_at: now }),
+    getSession: () => ({ id: "c1", agent_session_id: null, title, created_at: now, updated_at: now }),
     getSet: () => set,
     getCurrentSet: () => set,
     latestVersion: () => versions.at(-1),
+    recentTrackIds: () => ["r1", "r2"],
     recordProposal(_c: string, name: string, curve: string, order: string[], note: string | null, snapshot: SetSnapshot | null) {
       set ??= { id: "s1", chat_session_id: "c1", name, curve, status: "rascunho", spotify_playlist_id: null, spotify_url: null, created_at: now, updated_at: now };
       const last = versions.at(-1);
@@ -42,6 +43,10 @@ function fakeRepo() {
     listPlans: (v: string) => saved.get(v) ?? [],
     setStatus(_id: string, status: SetStatus, sp?: { playlist_id: string | null; url: string | null }) {
       set = { ...(set as SetRow), status, spotify_playlist_id: sp?.playlist_id ?? null, spotify_url: sp?.url ?? null };
+      return set;
+    },
+    renameSet(_id: string, name: string) {
+      set = { ...(set as SetRow), name };
       return set;
     },
     createApproval(c: string, s: string | null, action: string, payload: unknown) {
@@ -132,6 +137,15 @@ const input = { track_ids: ["t1", "spotify:track:t2", "https://open.spotify.com/
     const r = await gate(ctx, name, {});
     assert.deepEqual(r, { behavior: "deny", message: "Ferramenta não disponível no Play.Me." });
   }
+}
+
+// P17: set com tamanho recebe avoid com as faixas dos últimos sets; sem tamanho, ou com avoid do agente, entra como veio
+{
+  const { ctx } = setup();
+  const BUILD = "mcp__spotify-dj__dj_build_set";
+  assert.deepEqual(await gate(ctx, BUILD, { playlist: "Eletro", duration_minutes: 90 }), { behavior: "allow", updatedInput: { playlist: "Eletro", duration_minutes: 90, avoid: ["r1", "r2"] } });
+  assert.deepEqual(await gate(ctx, BUILD, { playlist: "Eletro", max_tracks: 20, avoid: [] }), { behavior: "allow", updatedInput: { playlist: "Eletro", max_tracks: 20, avoid: [] } });
+  assert.deepEqual(await gate(ctx, BUILD, { playlist: "Eletro" }), { behavior: "allow", updatedInput: { playlist: "Eletro" } });
 }
 
 // extração: dj_build_set
@@ -360,8 +374,9 @@ const sized = { ...full, pool_size: 30, duration_ms: 5_460_000, order: full.orde
 }
 
 // ---------- runChat inteiro com um query falso: detalhes, versão com snapshot, turno gravado e pesos ----------
-const fakeQuery = (messages: unknown[], seen?: { options?: { systemPrompt?: unknown } }) =>
-  ((args: { options?: { systemPrompt?: unknown } }) => {
+type Seen = { options?: { systemPrompt?: unknown; thinking?: unknown; includePartialMessages?: unknown } };
+const fakeQuery = (messages: unknown[], seen?: Seen) =>
+  ((args: Seen) => {
     if (seen) seen.options = args.options;
     return (async function* () {
       for (const m of messages) {
@@ -371,7 +386,7 @@ const fakeQuery = (messages: unknown[], seen?: { options?: { systemPrompt?: unkn
     })();
   }) as unknown as typeof query;
 const chatDeps = (f: ReturnType<typeof fakeRepo>, q: typeof query): ChatDeps => ({
-  repo: f.repo, waiter: new ApprovalWaiter(), mcpServerPath: "mcp.js", mcpEnv: {}, model: "m", maxBudgetUsd: 1,
+  repo: f.repo, waiter: new ApprovalWaiter(), mcpServerPath: "mcp.js", mcpEnv: {}, model: "m", maxBudgetUsd: 1, thinkingTokens: 1024,
   storeDir, settings: { get: () => ({ weights: { camelot: 35, bpm: 25, energy: 25, style: 10, progression: 5 } }) },
   playlistName: (id) => (id === "pl1" ? "Eletro" : undefined), query: q,
 });
@@ -384,7 +399,7 @@ const finished = { type: "result", subtype: "success", total_cost_usd: 0.03 };
 {
   const f = fakeRepo();
   const out: ServerEvent[] = [];
-  const seen: { options?: { systemPrompt?: unknown } } = {};
+  const seen: Seen = {};
   const script = [
     sys, said("Vou ver a cobertura."),
     used("u1", "metadata_coverage", { playlist: "spotify:playlist:pl1" }),
@@ -411,6 +426,9 @@ const finished = { type: "result", subtype: "success", total_cost_usd: 0.03 };
   // Sprint 4: duração e quantidade só quando o usuário pede; o Jev só quando ele pede
   assert.match(String(seen.options?.systemPrompt), /duration_minutes em dj_build_set \(1h30 = 90\).*max_tracks; sem pedido, não passe nenhum dos dois\./);
   assert.match(String(seen.options?.systemPrompt), /transition_plan com use_jev: true ou jev_compare quando o usuário pedir o Jev\./);
+  // Sprint 5: cobertura de metadados antes do primeiro set da playlist (Q3) e emoji proibido até no fim das frases
+  assert.match(String(seen.options?.systemPrompt), /Na primeira montagem de set de uma playlist nesta conversa, chame metadata_coverage antes de dj_build_set e comente a cobertura em uma frase\./);
+  assert.match(String(seen.options?.systemPrompt), /Nunca use emojis, nem no fim das frases\./);
 }
 // erro no agente vira evento error e o turno é gravado assim mesmo; falha ao gravar o turno não derruba o runChat
 {
@@ -430,6 +448,147 @@ const finished = { type: "result", subtype: "success", total_cost_usd: 0.03 };
   } finally {
     console.error = log;
   }
+}
+
+// ---------- Sprint 5: pensamento e streaming ao vivo ----------
+const streamDelta = (delta: unknown, parent: string | null = null) => ({ type: "stream_event", parent_tool_use_id: parent, event: { type: "content_block_delta", index: 0, delta } });
+const thinkingDelta = (thinking: string, parent: string | null = null) => streamDelta({ type: "thinking_delta", thinking }, parent);
+const textDelta = (text: string) => streamDelta({ type: "text_delta", text });
+const thought = (thinking: string) => ({ type: "assistant", message: { content: [{ type: "thinking", thinking, signature: "sig" }] } });
+{
+  const f = fakeRepo();
+  const out: ServerEvent[] = [];
+  const seen: Seen = {};
+  const script = [
+    sys,
+    thinkingDelta(""), textDelta(""), // deltas vazios (pensamento omitido pela API): ignorados
+    thinkingDelta("Vou olhar "), thinkingDelta("a playlist."),
+    streamDelta({ type: "signature_delta", signature: "x" }), // outro tipo de delta e evento que não é delta: ignorados
+    { type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_stop", index: 0 } },
+    thinkingDelta("de um subagente", "toolu_x"), // fora da conversa principal: ignorado
+    thought("Vou olhar a playlist."),
+    { type: "assistant", message: { content: [{ type: "redacted_thinking", data: "zzz" }] } }, // ignorado
+    thought(""), // vazio: ignorado
+    textDelta("Olá"), textDelta(", DJ."),
+    said("Olá, DJ."),
+    finished,
+  ];
+  await runChat(chatDeps(f, fakeQuery(script, seen)), "c1", "oi", (e) => out.push(e));
+  assert.deepEqual(out, [
+    { type: "thinking_delta", text: "Vou olhar " }, { type: "thinking_delta", text: "a playlist." },
+    { type: "thinking", text: "Vou olhar a playlist." },
+    { type: "text_delta", text: "Olá" }, { type: "text_delta", text: ", DJ." },
+    { type: "text", text: "Olá, DJ." },
+    { type: "done", cost_usd: 0.03 },
+  ]);
+  // o turno grava só os blocos finais (pensamento e texto), nunca os deltas
+  assert.deepEqual(f.turns, [{ userMessage: "oi", events: [{ type: "thinking", text: "Vou olhar a playlist." }, { type: "text", text: "Olá, DJ." }], cost: 0.03 }]);
+  assert.deepEqual(seen.options?.thinking, { type: "enabled", budgetTokens: 1024, display: "summarized" });
+  assert.equal(seen.options?.includePartialMessages, true);
+}
+// PLAYME_THINKING_TOKENS: "0" desliga (não cai no padrão); vazio, ausente ou inválido valem 1024; abaixo do piso da API sobe para 1024
+assert.deepEqual(["0", "2048", " 4096 ", "", undefined, "abc", "-5", "1.5"].map((v) => thinkingTokensFrom(v)), [0, 2048, 4096, 1024, 1024, 1024, 1024, 1024]);
+for (const [tokens, thinking] of [[0, { type: "disabled" }], [2048, { type: "enabled", budgetTokens: 2048, display: "summarized" }], [500, { type: "enabled", budgetTokens: 1024, display: "summarized" }]] as const) {
+  const seen: Seen = {};
+  await runChat({ ...chatDeps(fakeRepo(), fakeQuery([sys, finished], seen)), thinkingTokens: tokens }, "c1", "oi", () => undefined);
+  assert.deepEqual(seen.options?.thinking, thinking, `thinkingTokens ${tokens}`);
+}
+
+// a API recusa o pensamento: o turno é refeito uma vez, sem ele, e o erro cru não chega ao chat
+/** Um script por chamada ao query, na ordem (a segunda é o turno refeito); guarda as opções de cada chamada. */
+const fakeQueries = (scripts: unknown[][], calls: NonNullable<Seen["options"]>[]) => {
+  let n = 0;
+  return ((args: Seen) => {
+    calls.push(args.options ?? {});
+    const script = scripts[n++] ?? [];
+    return (async function* () {
+      for (const m of script) {
+        if (m instanceof Error) throw m;
+        yield m;
+      }
+    })();
+  }) as unknown as typeof query;
+};
+{
+  const refusal = "400 invalid_request_error: thinking.enabled.budget_tokens: Input should be greater than or equal to 1024";
+  const apiErrorMessage = { type: "assistant", error: "invalid_request", message: { content: [{ type: "text", text: `API Error: ${refusal}` }] } };
+  const refusals: [string, unknown[]][] = [
+    ["exceção do SDK", [sys, new Error(refusal)]],
+    ["result com is_error", [sys, apiErrorMessage, { type: "result", subtype: "success", is_error: true, result: `API Error: ${refusal}`, total_cost_usd: 0 }]],
+    ["result de erro", [sys, apiErrorMessage, { type: "result", subtype: "error_during_execution", is_error: true, errors: [`API Error: ${refusal}`] }]],
+  ];
+  const run = async (thinkingTokens: number, scripts: unknown[][]) => {
+    const f = fakeRepo();
+    const out: ServerEvent[] = [];
+    const calls: NonNullable<Seen["options"]>[] = [];
+    await runChat({ ...chatDeps(f, fakeQueries(scripts, calls)), thinkingTokens }, "c1", "oi", (e) => out.push(e));
+    return { f, out, calls: calls.map((c) => c.thinking) };
+  };
+  const logged: unknown[][] = [];
+  const log = console.error;
+  console.error = (...args: unknown[]) => void logged.push(args); // o runChat loga a recusa (esperada aqui)
+  try {
+    for (const [shape, refused] of refusals) {
+      const { f, out, calls } = await run(1024, [refused, [sys, said("ok"), finished]]);
+      assert.deepEqual(calls, [{ type: "enabled", budgetTokens: 1024, display: "summarized" }, { type: "disabled" }], shape); // refeito uma vez, sem pensamento
+      assert.deepEqual(out, [{ type: "text", text: "ok" }, { type: "done", cost_usd: 0.03 }], shape); // nada do erro cru da API
+      assert.deepEqual(f.turns, [{ userMessage: "oi", events: [{ type: "text", text: "ok" }], cost: 0.03 }], shape); // um turno só
+    }
+    assert.equal(logged.length, 3); // cada recusa foi ao log do servidor
+    assert.ok(logged.every((args) => /pensamento recusado/.test(String(args[0])) && /budget_tokens/.test(String(args[1]))));
+    // sem refazer: pensamento já desligado, evento já emitido (refazer repetiria ferramentas e o gate) ou erro que não é do pensamento
+    const failure = { type: "error", message: "Falha no agente. Veja o log do servidor." };
+    const spare = [sys, said("não deveria rodar"), finished];
+    const off = await run(0, [[sys, new Error(refusal)], spare]);
+    assert.deepEqual([off.calls.length, off.out], [1, [failure]]);
+    const late = await run(1024, [[sys, said("começando"), new Error(refusal)], spare]);
+    assert.deepEqual([late.calls.length, late.out], [1, [{ type: "text", text: "começando" }, failure]]);
+    const other = await run(1024, [[sys, new Error("boom")], spare]);
+    assert.deepEqual([other.calls.length, other.out], [1, [failure]]);
+    // só uma segunda chance: a recusa repetida vira erro
+    const twice = await run(1024, [[sys, new Error(refusal)], [sys, new Error(refusal)], spare]);
+    assert.deepEqual([twice.calls.length, twice.out], [2, [failure]]);
+  } finally {
+    console.error = log;
+  }
+}
+
+// ---------- Sprint 5: nome do set ("<playlist> · <curva>") quando o dj_build_set termina ----------
+const rawTitle = "Monte um set da playlist Eletro, 1h30";
+{
+  const f = fakeRepo(rawTitle);
+  let nameAtEvent: string | undefined;
+  const build = [sys, used("u1", "dj_build_set", { playlist: "spotify:playlist:pl1", duration_minutes: 90 }), returned("u1", full), finished];
+  await runChat(chatDeps(f, fakeQuery(build)), "c1", rawTitle, (e) => {
+    if (e.type === "set") nameAtEvent = f.set?.name;
+  });
+  assert.equal(f.set?.name, "Eletro · peak time");
+  assert.equal(nameAtEvent, "Eletro · peak time"); // renomeado antes do evento: a tela relê o set ao recebê-lo
+  assert.equal(f.repo.getSession("c1")?.title, rawTitle); // o título da conversa não muda
+  // nova montagem no mesmo set: o nome já não é o título cru, então fica
+  const reversed = { ...full, order: [...full.order].reverse(), ordered_track_ids: [...full.ordered_track_ids].reverse() };
+  await runChat(chatDeps(f, fakeQuery([sys, used("u2", "dj_build_set", { playlist: "zzz" }), returned("u2", reversed), finished])), "c1", "de novo", () => undefined);
+  assert.equal(f.versions.length, 2);
+  assert.equal(f.set?.name, "Eletro · peak time");
+}
+for (const [label, tool, call, result, expected] of [
+  ["id fora do cache", "dj_build_set", { playlist: "0123456789abcdefghijkl" }, { ...full, curve: "classic" }, "Set · clássica"],
+  ["link fora do cache não vira nome", "dj_build_set", { playlist: "https://open.spotify.com/playlist/0123456789abcdefghijkl?si=x" }, { ...full, curve: "classic" }, "Set · clássica"],
+  ["NOME da playlist passado direto (P14)", "dj_build_set", { playlist: "  Eletro Clássicos " }, { ...full, curve: "sunrise" }, "Eletro Clássicos · sunrise"],
+  ["sem playlist", "dj_build_set", { track_ids: ["a", "b"] }, { ...full, curve: "warm_up" }, "Set · warm up"],
+  ["track_ids vence: a playlist (id do cache) não nomeia", "dj_build_set", { playlist: "pl1", track_ids: ["a", "b"] }, { ...full, curve: "warm_up" }, "Set · warm up"],
+  ["track_ids vence: texto livre não vira nome", "dj_build_set", { playlist: "qualquer coisa", track_ids: ["a", "b"] }, { ...full, curve: "warm_up" }, "Set · warm up"],
+  ["curva desconhecida: o texto cru, nunca o protótipo da tabela", "dj_build_set", { playlist: "pl1" }, { ...full, curve: "constructor" }, "Eletro · constructor"],
+  ["dj_evaluate_order não renomeia", "dj_evaluate_order", { playlist: "pl1" }, full, rawTitle],
+] as const) {
+  const f = fakeRepo(rawTitle);
+  await runChat(chatDeps(f, fakeQuery([sys, used("u1", tool, call), returned("u1", result), finished])), "c1", rawTitle, () => undefined);
+  assert.equal(f.set?.name, expected, label);
+}
+for (const [curve, label] of [["classic", "clássica"], ["peak_time", "peak time"], ["warm_up", "warm up"], ["sunrise", "sunrise"]]) {
+  const { f, ctx } = setup();
+  recordFromResult(ctx, { ...full, curve }, { playlist: "Eletro" });
+  assert.equal(f.set?.name, `Eletro · ${label}`);
 }
 
 // ---------- spotify.ts: conexão pelos tokens do MCP, playlists paginadas (50 por página) com cache, sem rede ----------
@@ -500,4 +659,4 @@ const finished = { type: "result", subtype: "success", total_cost_usd: 0.03 };
   assert.equal((await ok).behavior, "deny");
 }
 
-console.log("[ok] agent: gate, extração, snapshot com origem das faixas, tamanho e energia estimada, reorderSnapshot, detalhe das ferramentas com duração, runChat com turno gravado e pesos, nota sem travar o turno, spotify");
+console.log("[ok] agent: gate, extração, snapshot com origem das faixas, tamanho e energia estimada, reorderSnapshot, detalhe das ferramentas com duração, runChat com turno gravado e pesos, pensamento e streaming, recusa do pensamento, nome do set, nota sem travar o turno, spotify");

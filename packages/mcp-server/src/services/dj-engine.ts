@@ -254,6 +254,7 @@ export function normalizeWeights(partial?: Partial<Weights>): Weights {
  *
  * P10: com `maxTracks`/`targetDurationMs` o feixe preenche N posições escolhendo entre TODAS as faixas do pool
  * (não só ordena); a curva de energia passa a valer para as N posições. Sem eles, N = n e nada muda.
+ * P13: por duração, a última faixa ainda sai enquanto a soma passar do alvo + meia faixa (trimToTarget).
  */
 export function buildSet(tracks: TrackAnalysis[], options: BuildOptions): SetResult {
   if (tracks.length < 2) throw new Error("São necessárias pelo menos 2 faixas com análise para montar um set.");
@@ -332,9 +333,13 @@ export function buildSet(tracks: TrackAnalysis[], options: BuildOptions): SetRes
 
   const best = beams[0];
   if (!best) throw new Error("Não foi possível montar o set com as restrições informadas.");
-  const ordered = best.order.map((idx) => tracks[idx] as TrackAnalysis);
+  let ordered = best.order.map((idx) => tracks[idx] as TrackAnalysis);
+  // P13: só por duração (nem max_tracks nem o modo antigo); com fechamento fixo não corta, tiraria a faixa pedida
+  if (options.targetDurationMs !== undefined && options.maxTracks === undefined && endIdx === undefined) {
+    ordered = trimToTarget(ordered, options.targetDurationMs, options.durations);
+  }
   const result = buildReport(ordered, options.curve, weights);
-  if (selecting) annotateSelection(result, ordered, n, size.wanted, options.durations);
+  if (selecting) annotateSelection(result, ordered, n, size, options.durations, options.targetDurationMs);
   return result;
 }
 
@@ -375,13 +380,36 @@ function setSize(tracks: TrackAnalysis[], options: BuildOptions): { count: numbe
   return { count: Math.min(tracks.length, LIMITS.maxTracksPerSet, Math.max(2, wanted)), wanted };
 }
 
+/**
+ * P13: o N da duração vem da média do POOL, e as faixas escolhidas costumam ser mais longas (alvo 90 min deu 103).
+ * Tira a última faixa enquanto a soma passar do alvo + meia faixa (média da ordem); nunca abaixo de 2.
+ * Sem a duração de alguma faixa não há soma: a ordem fica como está.
+ */
+function trimToTarget(
+  ordered: TrackAnalysis[],
+  targetMs: number,
+  durations?: ReadonlyMap<string, number | null>,
+): TrackAnalysis[] {
+  const ms = ordered.map((track) => durations?.get(track.track_id));
+  if (!ms.every((value): value is number => typeof value === "number")) return ordered;
+  let total = ms.reduce((sum, value) => sum + value, 0);
+  const limit = targetMs + total / ms.length / 2;
+  let keep = ms.length;
+  while (keep > 2 && total > limit) {
+    keep -= 1;
+    total -= ms[keep] as number;
+  }
+  return ordered.slice(0, keep);
+}
+
 /** P10: pool_size, duration_ms (null se faltar a duração de alguma faixa da ordem) e os avisos da seleção. */
 function annotateSelection(
   result: SetResult,
   ordered: TrackAnalysis[],
   pool: number,
-  wanted: number,
+  size: { count: number; wanted: number },
   durations?: ReadonlyMap<string, number | null>,
+  targetMs?: number,
 ): void {
   const total = ordered.reduce<number | null>((sum, track) => {
     const ms = durations?.get(track.track_id);
@@ -391,9 +419,13 @@ function annotateSelection(
   result.duration_ms = total;
   const minutes = total === null ? "" : ` (~${Math.round(total / 60_000)} min)`;
   result.warnings.push(`Selecionadas ${ordered.length} de ${pool} faixas analisadas${minutes}`);
-  if (wanted > ordered.length) {
+  // P13: o feixe preenche `count` posições; ordem menor que isso = o corte da duração agiu
+  if (total !== null && targetMs !== undefined && ordered.length < size.count) {
+    result.warnings.push(`Ajustado para ${Math.round(total / 60_000)} min (alvo ${Math.round(targetMs / 60_000)})`);
+  }
+  if (size.wanted > size.count) {
     result.warnings.push(
-      `Pedido de ~${wanted} faixas excede o máximo de ${ordered.length} (faixas analisadas ou limite por set): o set fica com ${ordered.length}.`,
+      `Pedido de ~${size.wanted} faixas excede o máximo de ${size.count} (faixas analisadas ou limite por set): o set fica com ${size.count}.`,
     );
   }
 }
@@ -519,4 +551,14 @@ export function buildReport(ordered: TrackAnalysis[], curve: CurvePreset, weight
 function round(value: number, digits = 2): number {
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
+}
+
+/**
+ * P17: tira do pool as faixas a evitar (ex.: as dos últimos sets), mas só se sobrar pelo menos metade das analisadas e 10 faixas:
+ * com pool curto a variedade custaria o set. Devolve quantas saíram.
+ */
+export function avoidRecent<T extends { track_id: string }>(tracks: T[], avoid: Set<string>): { tracks: T[]; avoided: number } {
+  const kept = tracks.filter((t) => !avoid.has(t.track_id));
+  const enough = kept.length >= Math.max(10, Math.ceil(tracks.length / 2));
+  return enough ? { tracks: kept, avoided: tracks.length - kept.length } : { tracks, avoided: 0 };
 }

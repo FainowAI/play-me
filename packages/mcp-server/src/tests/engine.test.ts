@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { formatCamelot, harmonicMatch, parseKey } from "../services/camelot.js";
 import { ECHO_ONLY_PENALTY } from "../constants.js";
-import { bpmDistance, buildSet, echoOnly, scoreTransition, targetEnergy } from "../services/dj-engine.js";
+import { avoidRecent, bpmDistance, buildReport, buildSet, echoOnly, normalizeWeights, scoreTransition, targetEnergy } from "../services/dj-engine.js";
 import { setToMarkdown } from "../services/format.js";
 import type { TrackAnalysis } from "../types.js";
 
@@ -269,6 +269,65 @@ const partial = new Map<string, number | null>(durations).set(big[0]?.track_id a
 const partialMean = [...partial.values()].filter((ms): ms is number => ms !== null).reduce((sum, ms) => sum + ms, 0) / 29;
 assert.equal(buildSet(big, { curve: "classic", targetDurationMs: target, durations: partial }).order.length, Math.round(target / partialMean));
 
+// ---------- P13: duração aproximada (o alvo de 90 min deu 103) ----------
+// Duração que cresce com a energia: a curva escolhe faixas mais longas que a média do pool, e a soma passa do alvo.
+const longMs = new Map<string, number | null>(big.map((x) => [x.track_id, 180_000 + 60_000 * (x.energy as number)]));
+const longMean = [...longMs.values()].reduce<number>((sum, ms) => sum + (ms as number), 0) / longMs.size;
+const longN = Math.round(target / longMean);
+const sumLong = (ids: string[]): number => ids.reduce((sum, trackId) => sum + (longMs.get(trackId) as number), 0);
+const limitOf = (ids: string[]): number => target + sumLong(ids) / ids.length / 2; // alvo + meia faixa (média da ordem)
+const untrimmed = buildSet(big, { curve: "classic", maxTracks: longN, durations: longMs }); // por quantidade nunca corta
+const untrimmedIds = untrimmed.order.map((p) => p.track_id);
+assert.equal(untrimmed.order.length, longN);
+assert.ok((untrimmed.duration_ms as number) > limitOf(untrimmedIds), "o cenário passa do alvo + meia faixa");
+assert.ok(!untrimmed.warnings.some((w) => w.startsWith("Ajustado")), "max_tracks não tem corte nem aviso");
+
+const trimmed = buildSet(big, { curve: "classic", targetDurationMs: target, durations: longMs });
+const trimmedIds = trimmed.order.map((p) => p.track_id);
+let keep = longN; // a regra escrita de outro jeito: tira a última enquanto a soma passar do limite, sem ficar abaixo de 2
+while (keep > 2 && sumLong(untrimmedIds.slice(0, keep)) > limitOf(untrimmedIds)) keep -= 1;
+assert.ok(keep < longN && keep > 2, `o cenário pede corte (ficaria com ${keep} de ${longN})`);
+assert.deepEqual(trimmedIds, untrimmedIds.slice(0, keep), "só as últimas saem: a ordem é prefixo da do max_tracks");
+assert.equal(trimmed.duration_ms, sumLong(trimmedIds));
+assert.ok((trimmed.duration_ms as number) <= limitOf(untrimmedIds), "cabe em alvo + meia faixa");
+assert.ok(sumLong(untrimmedIds.slice(0, keep + 1)) > limitOf(untrimmedIds), "corta o mínimo: com mais uma faixa ainda passaria");
+const trimmedMin = Math.round((trimmed.duration_ms as number) / 60_000);
+assert.ok(trimmed.warnings.includes(`Selecionadas ${keep} de 30 faixas analisadas (~${trimmedMin} min)`), trimmed.warnings.join(" | "));
+assert.ok(trimmed.warnings.includes(`Ajustado para ${trimmedMin} min (alvo 90)`), trimmed.warnings.join(" | "));
+assert.ok(!trimmed.warnings.some((w) => w.includes("excede o máximo")), "o corte não vira 'pedido acima do máximo'");
+// o relatório é recalculado para a ordem cortada (curva, transições, pontos fracos e pontes)
+const rebuilt = buildReport(trimmedIds.map((trackId) => big.find((x) => x.track_id === trackId) as TrackAnalysis), "classic", normalizeWeights());
+for (const field of ["average_score", "order", "transitions", "weak_transitions", "problem_tracks", "bridges"] as const) {
+  assert.deepEqual(trimmed[field], rebuilt[field], `relatório recalculado: ${field}`);
+}
+assert.equal(trimmed.transitions.length, keep - 1);
+
+// sem corte: soma dentro de alvo + meia faixa, ordem de 2 faixas, fechamento fixo ou faixa sem duração
+const flat = buildSet(big, { curve: "classic", targetDurationMs: target, durations: new Map(big.map((x) => [x.track_id, 300_000])) });
+assert.equal(flat.order.length, 18, "18 × 5 min = alvo: nada a cortar");
+assert.ok(!flat.warnings.some((w) => w.startsWith("Ajustado")));
+// nunca abaixo de 2: a abertura fixa dura 50 min (alvo 20, N = 3) e o corte para em 2 faixas mesmo passando do limite
+const tiny = pool(8, 4);
+const tinyMs = new Map<string, number | null>(tiny.map((x, i) => [x.track_id, i === 0 ? 3_000_000 : 120_000]));
+const floored = buildSet(tiny, { curve: "classic", targetDurationMs: 20 * 60_000, durations: tinyMs, startTrackId: tiny[0]?.track_id });
+assert.equal(floored.order.length, 2, "nunca abaixo de 2");
+assert.equal(floored.duration_ms, 3_000_000 + 120_000);
+assert.ok(floored.warnings.includes("Ajustado para 52 min (alvo 20)"), floored.warnings.join(" | "));
+const pinEnd = untrimmedIds[keep] as string; // uma das faixas que o corte tiraria
+const pinnedEnd = buildSet(big, { curve: "classic", targetDurationMs: target, durations: longMs, endTrackId: pinEnd });
+const pinnedIds = pinnedEnd.order.map((p) => p.track_id);
+assert.ok((pinnedEnd.duration_ms as number) > limitOf(pinnedIds), "sem a trava o corte agiria");
+assert.equal(pinnedEnd.order.length, longN, "com fechamento fixo não corta (tiraria a faixa pedida)");
+assert.equal(pinnedIds.at(-1), pinEnd);
+assert.ok(!pinnedEnd.warnings.some((w) => w.startsWith("Ajustado")));
+const holeId = untrimmedIds[0] as string; // abertura fixa com a duração desconhecida: há N, mas não há soma
+const holes = new Map(longMs).set(holeId, null);
+const holeMean = [...holes.values()].filter((ms): ms is number => ms !== null).reduce((sum, ms) => sum + ms, 0) / (big.length - 1);
+const holey = buildSet(big, { curve: "classic", targetDurationMs: target, durations: holes, startTrackId: holeId });
+assert.equal(holey.duration_ms, null);
+assert.equal(holey.order.length, Math.round(target / holeMean), "sem a duração de uma faixa da ordem não há corte");
+assert.ok(!holey.warnings.some((w) => w.startsWith("Ajustado")));
+
 // pool grande (n > 90): 12 candidatos de abertura, N posições e a curva continuam valendo
 const huge = pool(120, 21);
 const hugeSet = buildSet(huge, { curve: "peak_time", maxTracks: 15, durations: new Map(huge.map((x) => [x.track_id, 300_000])) });
@@ -299,6 +358,19 @@ const flaggedMd = setToMarkdown(flaggedSet);
 assert.match(flaggedMd, /E\d+\* \(alvo/);
 assert.match(flaggedMd, /\* energia estimada: energy da ReccoBeats/);
 
+// P17: avoidRecent só tira as faixas se sobrar metade do pool (e 10)
+{
+  const forty = pool(40, 7);
+  const ten = new Set(forty.slice(0, 10).map((t) => t.track_id));
+  assert.equal(avoidRecent(forty, ten).avoided, 10);
+  assert.equal(avoidRecent(forty, ten).tracks.length, 30);
+  const most = new Set(forty.slice(0, 25).map((t) => t.track_id));
+  assert.deepEqual(avoidRecent(forty, most), { tracks: forty, avoided: 0 }); // sobrariam 15 < 20
+  const twelve = pool(12, 7);
+  assert.equal(avoidRecent(twelve, new Set(twelve.slice(0, 3).map((t) => t.track_id))).avoided, 0); // sobrariam 9 < 10
+  assert.equal(avoidRecent(forty, new Set(["nope"])).avoided, 0);
+}
+
 console.log(setToMarkdown(result));
 console.log(`\n[ok] ${eletro.length} faixas em ${elapsed} ms · nota média ${result.average_score} · fixado: ${pinned.average_score}`);
-console.log("[ok] regressão sem parâmetros (5 cenários), seleção por quantidade e duração (P10), energia estimada no relatório (P12)");
+console.log("[ok] regressão sem parâmetros (5 cenários), seleção por quantidade e duração (P10), corte da duração (P13), energia estimada no relatório (P12), faixas de sets recentes (P17)");

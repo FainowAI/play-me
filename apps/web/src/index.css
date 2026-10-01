@@ -3,6 +3,7 @@
 @import "../../../design/playme-tokens.css";
 @import "tailwindcss";
 @import "./components/playme/playme.css";
+@import "./motion.css";
 
 /* Tailwind lê os tokens por referência (inline → var()), então o tema troca com data-theme. */
 @theme inline {

@@ -5,7 +5,7 @@ import { fail, render } from "../services/format.js";
 import { MetadataCache, lookupTracks, type LookupRow } from "../services/metadata/lookup.js";
 import { coverageBucket, type CoverageBucket } from "../services/metadata/merge.js";
 import { createReccoBeats } from "../services/metadata/reccobeats.js";
-import { formatError, parseSpotifyId } from "../services/spotify-client.js";
+import { formatError, parseSpotifyId, resolvePlaylistId } from "../services/spotify-client.js";
 import { ResponseFormat, type SpotifyTrackSummary } from "../types.js";
 
 const PLAYLIST_MAX = 1_000;
@@ -31,7 +31,7 @@ async function readTracks(playlist: string | undefined, trackIds: string[] | und
     return out;
   }
   if (!playlist) throw new Error("Informe `playlist` ou `track_ids`.");
-  const all = await client.getAllPlaylistItems(parseSpotifyId(playlist, "playlist"), limit);
+  const all = await client.getAllPlaylistItems(await resolvePlaylistId(client, playlist), limit);
   return all.items.filter((track) => track.id && !track.is_local);
 }
 
@@ -60,12 +60,12 @@ export function registerMetadataTools(server: McpServer): void {
 Regras: entrada do Mixar/manual nunca é sobrescrita; BPM da ReccoBeats é salvo como conferido; tom da web é sempre "[A VALIDAR]" (confira no Mixar); sem BPM ou sem tom a faixa fica pendente (nada é inventado). Nenhum áudio é baixado.
 
 Args:
-  - playlist: ID/link da playlist, ou track_ids: lista de IDs/links
+  - playlist: ID, link ou nome de uma playlist sua, ou track_ids: lista de IDs/links
   - limit: máximo de faixas (padrão 50). A ReccoBeats responde em lotes de 40 IDs
   - dry_run: padrão true (só mostra). Só grava no armazenamento com dry_run=false.`,
       inputSchema: z
         .object({
-          playlist: z.string().min(1).optional(),
+          playlist: z.string().min(1).optional().describe("ID, link ou nome de uma playlist sua"),
           track_ids: z.array(z.string().min(1)).min(1).max(200).optional(),
           limit: z.number().int().min(1).max(PLAYLIST_MAX).default(50),
           dry_run: z.boolean().default(true),
@@ -104,8 +104,10 @@ Args:
       description: `Conta, para uma playlist, de onde vêm BPM e tom salvos: mixar (Mixar ou outra fonte do usuário), web (BPM conferido pela ReccoBeats; tom da web sempre a validar), [A VALIDAR] (entradas antigas com BPM a validar) e pendente (sem dado). Lista as pendências. Só leitura.
 
 Args:
-  - playlist: ID ou link da playlist`,
-      inputSchema: z.object({ playlist: z.string().min(1), response_format: responseFormat }).strict(),
+  - playlist: ID, link ou nome de uma playlist sua`,
+      inputSchema: z
+        .object({ playlist: z.string().min(1).describe("ID, link ou nome de uma playlist sua"), response_format: responseFormat })
+        .strict(),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async ({ playlist, response_format }) => {

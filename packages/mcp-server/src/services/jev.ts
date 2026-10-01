@@ -40,6 +40,10 @@ const QUESTIONS = {
   },
 };
 
+/** Teste de conexão (Sprint 5, Q1): a pergunta mais barata possível; só importa o Jev responder, não o que ele responde. */
+const PING_QUESTIONS = { ping: { type: "noul", instructions: "O state é um teste de conexão?" } };
+const PING_TIMEOUT_MS = 5_000;
+
 export interface JevAnswer extends JevInsight {
   latency_ms: number;
   model: string;
@@ -52,10 +56,13 @@ export type JevResult = JevAnswer | JevFailure;
 
 export const isJevAnswer = (result: JevResult): result is JevAnswer => !("error" in result);
 
+export type PingResult = { ok: true; model: string; latency_ms: number } | { ok: false; error: string };
+
 export interface Jev {
   minConfidence: number;
   available(): boolean;
   askTransition(a: TrackAnalysis, b: TrackAnalysis, rules: TransitionPlan): Promise<JevResult>;
+  ping(): Promise<PingResult>;
 }
 
 export interface JevOptions {
@@ -116,32 +123,52 @@ function parseAnswer(body: RawBody, latency: number): JevResult {
   };
 }
 
+/** POST /v1/systemone. Toda falha vira Error em português (429/529: RateLimitError); quem chama decide o que fazer. */
+async function postJev(http: HttpDeps, key: string, body: unknown, timeoutMs: number): Promise<RawBody> {
+  let response: Response;
+  try {
+    response = await http.fetch(JEV_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    throw new Error(timedOut ? `O Jev não respondeu em ${timeoutMs / 1000} s.` : "Falha de rede ao falar com o Jev.");
+  }
+  if (response.status === 429 || response.status === 529) {
+    throw new RateLimitError("Jev", `HTTP ${response.status}, Retry-After ${response.headers.get("Retry-After") ?? "?"}`);
+  }
+  if (response.status === 401) throw new Error("O Jev recusou a chave (HTTP 401): confira TYPESAFE_API_KEY.");
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).slice(0, 200);
+    throw new Error(`O Jev respondeu HTTP ${response.status}${detail ? `: ${detail}` : ""}.`);
+  }
+  return (await response.json().catch(() => ({}))) as RawBody;
+}
+
+/**
+ * Teste de conexão do painel (Sprint 5, Q1): uma pergunta `noul` mínima, timeout de 5 s; HTTP 200 = conectado.
+ * Não é decisão de DJ, então não entra no jev-calls.jsonl. Nunca lança. Sem `apiKey`, vale TYPESAFE_API_KEY do ambiente;
+ * em teste, sempre injete o http (com chave no ambiente, o padrão bate na API real).
+ */
+export async function ping(http: HttpDeps = realHttp, apiKey: string | undefined = process.env.TYPESAFE_API_KEY): Promise<PingResult> {
+  const key = apiKey?.trim() ?? "";
+  if (key === "") return { ok: false, error: "sem chave" };
+  const started = http.now();
+  try {
+    const body = await postJev(http, key, { state: { ping: true }, model: JEV_MODEL, questions: PING_QUESTIONS }, PING_TIMEOUT_MS);
+    return { ok: true, model: body.model ?? JEV_MODEL, latency_ms: http.now() - started };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 export function createJev({ apiKey, minConfidence = JEV_DEFAULT_MIN_CONFIDENCE, http = realHttp, logPath }: JevOptions): Jev {
   const key = apiKey?.trim() ?? "";
-
-  async function post(state: unknown): Promise<RawBody> {
-    let response: Response;
-    try {
-      response = await http.fetch(JEV_URL, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ state, model: JEV_MODEL, questions: QUESTIONS }),
-        signal: AbortSignal.timeout(JEV_TIMEOUT_MS),
-      });
-    } catch (error) {
-      const timedOut = error instanceof Error && error.name === "TimeoutError";
-      throw new Error(timedOut ? `O Jev não respondeu em ${JEV_TIMEOUT_MS / 1000} s.` : "Falha de rede ao falar com o Jev.");
-    }
-    if (response.status === 429 || response.status === 529) {
-      throw new RateLimitError("Jev", `HTTP ${response.status}, Retry-After ${response.headers.get("Retry-After") ?? "?"}`);
-    }
-    if (response.status === 401) throw new Error("O Jev recusou a chave (HTTP 401): confira TYPESAFE_API_KEY.");
-    if (!response.ok) {
-      const detail = (await response.text().catch(() => "")).slice(0, 200);
-      throw new Error(`O Jev respondeu HTTP ${response.status}${detail ? `: ${detail}` : ""}.`);
-    }
-    return (await response.json().catch(() => ({}))) as RawBody;
-  }
+  const post = (state: unknown): Promise<RawBody> =>
+    postJev(http, key, { state, model: JEV_MODEL, questions: QUESTIONS }, JEV_TIMEOUT_MS);
 
   async function exchange(state: unknown, started: number): Promise<{ body: RawBody | null; result: JevResult }> {
     try {
@@ -182,7 +209,7 @@ export function createJev({ apiKey, minConfidence = JEV_DEFAULT_MIN_CONFIDENCE, 
     return result;
   }
 
-  return { minConfidence, available: () => key !== "", askTransition };
+  return { minConfidence, available: () => key !== "", askTransition, ping: () => ping(http, key) };
 }
 
 /** JEV_MIN_CONFIDENCE válido é um número em (0, 1]; vazio ou fora disso vale o padrão (0,7). */

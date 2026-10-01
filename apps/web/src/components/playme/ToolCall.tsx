@@ -1,5 +1,6 @@
 import { activityForTool } from "../../activity.ts";
 import { AgentOrb } from "./AgentOrb.tsx";
+import { Crossfade } from "./Crossfade.tsx";
 import { cx } from "./cx.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName, ToolCallProps } from "./types.ts";
@@ -12,15 +13,12 @@ const ICON: Record<Exclude<Status, "running">, IconName> = { done: "check", erro
 export function ToolCall({ name, activity, detail, status = "done" }: ToolCallProps) {
   return (
     <div className={cx("pm-tool", `pm-tool--${status}`)}>
-      {status === "running" ? (
-        <span className="pm-tool__icon pm-tool__icon--orb">
-          <AgentOrb activity={activity ?? activityForTool(name)} size={20} />
-        </span>
-      ) : (
-        <span className="pm-tool__icon">
-          <Icon name={ICON[status]} size={14} />
-        </span>
-      )}
+      <span className={cx("pm-tool__icon", status === "running" && "pm-tool__icon--orb")}>
+        {/* ao mudar de estado o orb e o ícone trocam em crossfade de 200 ms */}
+        <Crossfade value={status} className="pm-tool__xf">
+          {(s) => (s === "running" ? <AgentOrb activity={activity ?? activityForTool(name)} size={20} /> : <Icon name={ICON[s]} size={14} />)}
+        </Crossfade>
+      </span>
       <code className="pm-tool__name">{name}</code>
       {detail ? <span className="pm-tool__detail">{detail}</span> : null}
       <span className="pm-tool__status">{LABEL[status]}</span>

@@ -1,0 +1,129 @@
+/* Movimento da apps/web (Sprint 5, "Cabine viva"). DESIGN.md §4: 120 ms hover · 200 ms abrir/entrar · 400 ms reordenar/arco; ease-standard na troca, ease-out na entrada.
+   Contínuo SÓ enquanto o agente trabalha ou algo espera o DJ: orb, ponto do wordmark, tag "Aguardando aprovação" e o cursor do texto que ainda chega. Sem glow, sem gradiente decorativo.
+   prefers-reduced-motion: nada se move nem pisca (o index.css zera durações e iterações; aqui somem também os atrasos).
+
+   Uma linha por animação (nome · duração · gatilho):
+   pm-rise      · 200 ms · item novo no chat (mensagem, card, gate, Pensamento) e linhas/cards do painel: fade + 6 px de subida; atraso de 30 ms por item na releitura (--i), no painel e nos pedidos do Início (40 ms)
+   pm-pop       · 200 ms · pílula de ferramenta entra (scale .96 → 1)
+   pm-fade-in / pm-fade-out · 200 ms · Crossfade: o orb troca de atividade; o ícone da pílula troca de estado; o verbo do ThinkingStatus entra
+   pm-leave     · 200 ms · .pm-leaving: bloco que o pai mantém montado depois do fim e que desvanece recolhendo a altura (ainda sem uso: o ChatItems desmonta o ThinkingStatus direto)
+   pm-blink     · 1 s · cursor do texto que ainda chega (.think[data-live="true"], .draft)
+   pm-pulse     · 1,6 s · tag "Aguardando aprovação" (warn) enquanto o set espera o DJ
+   pm-beat      · 1,6 s · ponto do wordmark enquanto o agente trabalha (.sb[data-busy="true"])
+   pm-draw      · 400 ms · SetArc: traço desenhado quando a versão do set muda (área e pontos em fade)
+   Transições, sem keyframes:
+   camadas      · 200 ms · gaveta desliza e janela faz fade + scale (.97 → 1) ao abrir e ao sair; o scrim faz fade junto
+   indicadores  · 200 ms · abas do painel e barra da linha ativa da sidebar deslizam até a nova linha (anchor positioning)
+   seta         · 200 ms · a seta do "Pensamento" gira ao abrir/fechar; o bloco recolhe em 200 ms
+   hover        · 120 ms · cards (border line-strong + 1 px de altura), KeyBadge e EnergyMeter (scale 1.04) na linha
+   foco         · 200 ms · anel --focus-ring do composer (:focus-within) */
+
+@keyframes pm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes pm-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes pm-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pm-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes pm-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes pm-pulse {
+  /* anel de 1 px que respira por dentro da tag: o texto e o fundo não mudam, então o contraste fica o mesmo em todo quadro */
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px transparent;
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px var(--warn);
+  }
+}
+@keyframes pm-beat {
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes pm-draw {
+  /* o path do SetArc tem pathLength=1: um traço de comprimento 1 que entra da esquerda. O dasharray só existe durante a animação, então o fim é uma linha contínua */
+  from {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+/* saída opt-in: <div class="pm-leaving"> em volta do bloco, mantido montado 200 ms pelo pai e desmontado depois. Desvanece e recolhe a altura (grid 1fr → 0fr).
+   A margem negativa final é o espaço de 12 px que o corpo da mensagem (.pm-msg__body > * + *) põe entre blocos: quando o bloco sai, o de baixo já está
+   onde ficará, sem o salto de 12 px. */
+@keyframes pm-leave {
+  to {
+    opacity: 0;
+    grid-template-rows: 0fr;
+    margin-bottom: calc(-1 * var(--space-3));
+  }
+}
+.pm-leaving {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: pm-leave var(--duration-base) var(--ease-standard) forwards;
+}
+.pm-leaving > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* entrada com fade + subida: mensagens (atraso --i × 30 ms, posto por ChatMessage só quando várias montam juntas), cards e o bloco Pensamento */
+.pm-msg,
+.pm-trans,
+.pm-gate,
+.cov,
+.sent,
+.think {
+  animation: pm-rise var(--duration-base) var(--ease-out) backwards;
+}
+.pm-msg {
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+
+/* cursor do texto que ainda chega (um bloco de 0,4 em, como o "▍"): pensamento ao vivo e rascunho da resposta. O ChatItems não renderiza o caractere:
+   marca o pensamento com data-live e o último bloco do markdown com .draft (o mesmo DOM do texto final, então nada remonta quando o texto fecha) */
+.think[data-live="true"] pre::after,
+.draft:not(ul, ol)::after,
+.draft:is(ul, ol) > li:last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.4em;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  animation: pm-blink 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-delay: 0s !important;
+  }
+}

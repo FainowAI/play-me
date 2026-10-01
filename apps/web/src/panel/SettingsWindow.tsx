@@ -3,9 +3,10 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { ApiError } from "../api.ts";
 import { Button, StatusTag } from "../components/playme/index.ts";
 import type { Tone } from "../components/playme/index.ts";
+import { jevState } from "../shell/text.ts";
 import type { Theme } from "../state.ts";
 import { DEFAULT_WEIGHTS } from "../types.ts";
-import type { Weights } from "../types.ts";
+import type { Status, Weights } from "../types.ts";
 import { WEIGHT_KEYS, redistribute } from "./logic.ts";
 import type { SettingsWindowProps } from "./types.ts";
 
@@ -32,6 +33,19 @@ function Conn({ name, detail, tone, tag, children }: { name: string; detail: str
       <StatusTag tone={tone}>{tag}</StatusTag>
       {children}
     </li>
+  );
+}
+
+/** Jev: tom e frase pelo ping real do servidor (a mesma leitura da sidebar e do Início). */
+function JevConn({ jev }: { jev: Status["jev"] }) {
+  const { tone, value } = jevState(jev);
+  return (
+    <Conn
+      name="Jev · TypeSafe"
+      detail="Early access. Decide o tipo de transição quando a confiança passa de 0,7; senão, valem as regras."
+      tone={tone}
+      tag={value.charAt(0).toUpperCase() + value.slice(1)}
+    />
   );
 }
 
@@ -98,12 +112,7 @@ export function SettingsWindow({ status, theme, onTheme, settings, onSave, onClo
                 Configurar
               </Button>
             </Conn>
-            <Conn
-              name="Jev · TypeSafe"
-              detail="Early access. Até validar o acesso (Sprint 4), decide o planejador de regras."
-              tone="warn"
-              tag={status.jev ? "Chave no .env · acesso validado na Sprint 4" : "Sem chave · regras"}
-            />
+            <JevConn jev={status.jev} />
             <Conn
               name="Claude · API da Anthropic"
               detail="Chave lida do .env do servidor local. Nunca aparece aqui."

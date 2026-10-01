@@ -3,6 +3,7 @@
  * Check runnable: src/shell/text.check.ts.
  */
 import { splitLabel } from "../state.ts";
+import type { Playlist, SetSnapshot, Status } from "../types.ts";
 
 // ---------- markdown mínimo ----------
 
@@ -122,4 +123,58 @@ export function coverage(s: Summary): { total: number; done: number; pct: number
   if (typeof total !== "number" || typeof pending !== "number" || total <= 0) return null;
   const done = Math.max(0, total - pending);
   return { total, done, pct: Math.min(100, Math.round((done / total) * 100)) };
+}
+
+// ---------- estado da tela: cabeçalho do chat, playlist em contexto, Jev, pedido de aprovação ----------
+
+/** Curvas do MCP em português; curva desconhecida aparece com o nome cru, sem `_`. */
+const CURVE: Record<string, string> = { classic: "clássica", peak_time: "peak time", warm_up: "warm up", sunrise: "sunrise" };
+/** Nome da curva em português (classic → clássica); desconhecida sai como veio, sem underscore. */
+export const curveLabel = (curve: string): string => CURVE[curve] ?? curve.replace(/_/g, " ");
+
+/** "21 faixas · 103 min · 122–131 BPM · 7B → 3A · curva clássica": linha mono do cabeçalho, do snapshot da versão vista. Sem snapshot (ou sem faixas), nada. */
+export function headData(version: { snapshot: SetSnapshot | null } | null): string | null {
+  const snap = version?.snapshot;
+  if (!snap || snap.order.length === 0) return null;
+  const parts = [plural(snap.order.length, "faixa", "faixas")];
+  if (typeof snap.duration_ms === "number") parts.push(`${Math.round(snap.duration_ms / 60000)} min`); // só quando o Spotify informou a de todas
+  const bpm = snap.order.map((t) => Math.round(t.bpm));
+  const [lo, hi] = [Math.min(...bpm), Math.max(...bpm)];
+  parts.push(lo === hi ? `${lo} BPM` : `${lo}–${hi} BPM`);
+  const from = snap.order[0]?.camelot;
+  const to = snap.order.at(-1)?.camelot;
+  if (from && to) parts.push(`${from} → ${to}`);
+  if (snap.curve) parts.push(`curva ${curveLabel(snap.curve)}`);
+  return parts.join(" · ");
+}
+
+/**
+ * Playlist em contexto ao abrir: a última usada (`storedId`, guardado pela shell), senão a com mais faixas fora dos sets
+ * já enviados ([DJ MIX] …; contagem desconhecida perde e empate fica com a primeira), senão a primeira da lista.
+ */
+export function initialPlaylist(playlists: Playlist[], storedId: string | null): Playlist | null {
+  const last = playlists.find((p) => p.id === storedId);
+  if (last) return last;
+  const own = playlists.filter((p) => !p.name.startsWith("[DJ MIX]"));
+  return own.reduce<Playlist | null>((best, p) => (best === null || (p.total ?? -1) > (best.total ?? -1) ? p : best), null) ?? playlists[0] ?? null;
+}
+
+/** Jev do /api/status em tom e frase curta. `connected` é o ping real do servidor: null = ainda não respondeu. */
+export function jevState(jev: Status["jev"]): { tone: "ok" | "warn" | "neutral"; value: string } {
+  if (jev.connected) return { tone: "ok", value: jev.model ? `conectado · ${jev.model}` : "conectado" };
+  if (!jev.key) return { tone: "warn", value: "sem chave · regras" };
+  return jev.connected === false ? { tone: "warn", value: "chave no .env · sem resposta" } : { tone: "neutral", value: "verificando" };
+}
+
+/**
+ * Títulos do pedido de aprovação na ordem dos ids, pelos rótulos dos snapshots (a mais nova vence); id sem rótulo fica como o id.
+ * Nenhum rótulo conhecido (o set ainda não chegou): undefined, para o gate não piscar uma lista de ids crus.
+ */
+export function approvalTitles(ids: string[], order: { track_id: string; label: string }[]): string[] | undefined {
+  const labels = new Map(order.map((t) => [t.track_id, t.label] as const));
+  if (!ids.some((id) => labels.has(id))) return undefined;
+  return ids.map((id) => {
+    const label = labels.get(id);
+    return label === undefined ? id : splitLabel(label).title;
+  });
 }

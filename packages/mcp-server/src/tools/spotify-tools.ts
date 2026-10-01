@@ -4,7 +4,7 @@ import { LIMITS, SPOTIFY_SCOPES } from "../constants.js";
 import { readTokens } from "../services/auth.js";
 import { getContext } from "../services/context.js";
 import { fail, formatDuration, render, trackLine } from "../services/format.js";
-import { formatError, parseSpotifyId, trackUri } from "../services/spotify-client.js";
+import { formatError, parseSpotifyId, resolvePlaylistId, trackUri } from "../services/spotify-client.js";
 import { ResponseFormat } from "../types.js";
 
 const responseFormat = z
@@ -119,7 +119,7 @@ Observação: a API só entrega os itens de playlists próprias ou colaborativas
       description: `Lê as faixas de uma playlist própria ou colaborativa, na ordem atual, e cruza com as análises salvas (BPM, Camelot, energia).
 
 Args:
-  - playlist (string): ID, URI (spotify:playlist:ID) ou link do Spotify
+  - playlist (string): ID, URI (spotify:playlist:ID), link do Spotify ou nome de uma playlist sua
   - limit (1-50, padrão 50), offset (padrão 0)
   - response_format: 'markdown' | 'json'
 
@@ -132,7 +132,7 @@ Observações:
   - 403 indica playlist de terceiros, conta fora da allowlist do app ou dono sem Premium.`,
       inputSchema: z
         .object({
-          playlist: z.string().min(1).describe("ID, URI ou link da playlist"),
+          playlist: z.string().min(1).describe("ID, link ou nome de uma playlist sua"),
           limit: z.number().int().min(1).max(LIMITS.pageMax).default(50),
           offset: z.number().int().min(0).default(0),
           response_format: responseFormat,
@@ -143,7 +143,7 @@ Observações:
     async ({ playlist, limit, offset, response_format }) => {
       try {
         const { client, store } = getContext();
-        const playlistId = parseSpotifyId(playlist, "playlist");
+        const playlistId = await resolvePlaylistId(client, playlist);
         const [meta, page] = await Promise.all([
           client.getPlaylistMeta(playlistId),
           client.getPlaylistItemsPage(playlistId, limit, offset),
@@ -240,7 +240,7 @@ Só execute depois que o usuário aprovar a ordem proposta.
 Args:
   - track_ids (string[]): IDs, URIs ou links das faixas, na ordem final (1 a 500)
   - name (string, opcional): nome da nova playlist. Padrão: "[DJ MIX] <nome da playlist de origem>"
-  - source_playlist (string, opcional): playlist de origem, usada para o nome padrão
+  - source_playlist (string, opcional): playlist de origem (ID, link ou nome de uma playlist sua), usada para o nome padrão
   - description (string, opcional)
 
 Retorna: id e link da playlist criada e quantas faixas foram adicionadas.`,
@@ -248,7 +248,7 @@ Retorna: id e link da playlist criada e quantas faixas foram adicionadas.`,
         .object({
           track_ids: z.array(z.string().min(1)).min(1).max(500).describe("Faixas na ordem final"),
           name: z.string().min(1).max(100).optional(),
-          source_playlist: z.string().optional(),
+          source_playlist: z.string().optional().describe("ID, link ou nome de uma playlist sua"),
           description: z.string().max(300).optional(),
         })
         .strict(),
@@ -261,7 +261,7 @@ Retorna: id e link da playlist criada e quantas faixas foram adicionadas.`,
         let finalName = name;
         if (!finalName) {
           if (!source_playlist) return fail("Informe `name` ou `source_playlist` para nomear a playlist nova.");
-          const meta = await client.getPlaylistMeta(parseSpotifyId(source_playlist, "playlist"));
+          const meta = await client.getPlaylistMeta(await resolvePlaylistId(client, source_playlist));
           finalName = `[DJ MIX] ${meta.name}`;
         }
         const created = await client.createPlaylist(

@@ -3,11 +3,11 @@ import { z } from "zod";
 import { JEV_COMPARE_PAIRS, LIMITS } from "../constants.js";
 import { formatCamelot, musicalName, parseKey } from "../services/camelot.js";
 import { getContext } from "../services/context.js";
-import { buildReport, buildSet, normalizeWeights, scoreTransition } from "../services/dj-engine.js";
+import { avoidRecent, buildReport, buildSet, normalizeWeights, scoreTransition } from "../services/dj-engine.js";
 import { fail, render, setToMarkdown } from "../services/format.js";
 import { compareTransitions, decideWithJev, jevFromEnv, type Comparison } from "../services/jev.js";
 import { mixGuideStep, planTransition } from "../services/planner.js";
-import { formatError, parseSpotifyId } from "../services/spotify-client.js";
+import { formatError, parseSpotifyId, resolvePlaylistId } from "../services/spotify-client.js";
 import { type MixGuideStep, ResponseFormat, type SetResult, type TrackAnalysis } from "../types.js";
 
 const responseFormat = z
@@ -21,6 +21,8 @@ const curveSchema = z
   .describe(
     "Curva de energia: classic (warm up → construção → pico → clímax → encerramento), peak_time (começa quente e segura), warm_up (sobe devagar, sem pico), sunrise (sobe até o meio e desce longo)",
   );
+
+const playlistArg = z.string().optional().describe("ID, link ou nome de uma playlist sua");
 
 const weightsSchema = z
   .object({
@@ -72,7 +74,7 @@ async function resolveTrackIds(
   if (trackIds?.length) return { ids: trackIds.map((value) => parseSpotifyId(value, "track")), names, durations };
   if (!playlist) throw new Error("Informe `playlist` ou `track_ids`.");
   const { client } = getContext();
-  const all = await client.getAllPlaylistItems(parseSpotifyId(playlist, "playlist"), max);
+  const all = await client.getAllPlaylistItems(await resolvePlaylistId(client, playlist), max);
   const ids: string[] = [];
   for (const track of all.items) {
     if (!track.id || track.is_local) continue;
@@ -258,27 +260,33 @@ Args:
 Usa busca em feixe (beam search): avalia várias sequências em paralelo e pensa faixas à frente, em vez de escolher só a melhor transição imediata. Penaliza três ou mais faixas seguidas com energia 9+ para criar tensão e alívio.
 
 Args:
-  - playlist (string, opcional): ID/URI/link. Sem duration_minutes/max_tracks lê até 150 faixas e ordena todas; com um deles lê a playlist inteira (até 600 itens) e seleciona as melhores para o tamanho pedido
+  - playlist (string, opcional): ID, URI, link ou nome de uma playlist sua. Sem duration_minutes/max_tracks lê até 150 faixas e ordena todas; com um deles lê a playlist inteira (até 600 itens) e seleciona as melhores para o tamanho pedido
   - track_ids (string[], opcional): alternativa a playlist
-  - duration_minutes (10-600, opcional): tamanho do set em minutos (ex.: 90 para "1h30"). Seleciona, pela curva de energia, as faixas que mais se aproximam desse tempo, com a duração real do Spotify (por isso exige playlist). Exclusivo com max_tracks
+  - duration_minutes (10-600, opcional): tamanho do set em minutos (ex.: 90 para "1h30"). Seleciona, pela curva de energia, as faixas que mais se aproximam desse tempo, com a duração real do Spotify (por isso exige playlist). Se a soma passar do alvo + meia faixa, as últimas faixas saem e o aviso diz "Ajustado para X min (alvo Y)" (não corta com end_track). Exclusivo com max_tracks
   - max_tracks (2-150, opcional): quantidade de faixas. Seleciona as melhores para a curva. Exclusivo com duration_minutes
   - curve: classic | peak_time | warm_up | sunrise
   - start_track / end_track (opcional): fixa abertura e fechamento
   - exclude (string[], opcional): faixas a deixar fora
+  - avoid (string[], opcional): faixas a evitar quando der, ex.: as dos últimos sets. Só com duration_minutes/max_tracks; saem do pool se sobrar pelo menos metade das faixas analisadas (mín. 10), senão ficam e o aviso diz
   - weights (opcional), beam_width (opcional, 4-96)
   - response_format
 
-Retorna: ordem com seção (abertura, construção, crescimento, pico, clímax, encerramento), cada transição com relação harmônica, tipo (segura/criativa/arriscada), diferença de BPM, energia e motivo, pontos fracos, faixas que atrapalham, perfil de faixa-ponte para cada lacuna (Camelot, BPM e energia alvo) e avisos. Com duration_minutes ou max_tracks traz também pool_size (faixas analisadas consideradas) e duration_ms (duração somada do set; null se o Spotify não informou alguma). Energia marcada com * (energy_estimated) é estimativa da ReccoBeats, não dado do Mixar.
+Retorna: ordem com seção (abertura, construção, crescimento, pico, clímax, encerramento), cada transição com relação harmônica, tipo (segura/criativa/arriscada), diferença de BPM, energia e motivo, pontos fracos, faixas que atrapalham, perfil de faixa-ponte para cada lacuna (Camelot, BPM e energia alvo) e avisos. Com duration_minutes ou max_tracks traz também pool_size (faixas analisadas consideradas), avoided (faixas de avoid deixadas fora) e duration_ms (duração somada do set; null se o Spotify não informou alguma). Energia marcada com * (energy_estimated) é estimativa da ReccoBeats, não dado do Mixar.
 
 Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera playlists: mostre a ordem ao usuário antes de usar spotify_create_playlist_from_order.`,
       inputSchema: z
         .object({
-          playlist: z.string().optional(),
+          playlist: playlistArg,
           track_ids: z.array(z.string().min(1)).max(LIMITS.maxTracksPerSet).optional(),
           curve: curveSchema,
           start_track: z.string().optional(),
           end_track: z.string().optional(),
           exclude: z.array(z.string().min(1)).max(LIMITS.maxTracksPerSet).optional(),
+          avoid: z
+            .array(z.string().min(1))
+            .max(LIMITS.maxPlaylistRead)
+            .optional()
+            .describe("Faixas a evitar quando der (ex.: as dos últimos sets). Só com duration_minutes/max_tracks; saem do pool se sobrar pelo menos metade das analisadas (mín. 10)"),
           weights: weightsSchema,
           beam_width: z.number().int().min(4).max(96).optional(),
           duration_minutes: z
@@ -300,7 +308,7 @@ Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera
         .strict(),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    async ({ playlist, track_ids, curve, start_track, end_track, exclude, weights, beam_width, duration_minutes, max_tracks, response_format }) => {
+    async ({ playlist, track_ids, curve, start_track, end_track, exclude, avoid, weights, beam_width, duration_minutes, max_tracks, response_format }) => {
       try {
         if (duration_minutes !== undefined && max_tracks !== undefined) return fail("Informe duration_minutes ou max_tracks, não os dois.");
         const selecting = duration_minutes !== undefined || max_tracks !== undefined;
@@ -313,7 +321,11 @@ Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera
         const cap = selecting ? 10 : Infinity;
         const excluded = new Set((exclude ?? []).map((value) => parseSpotifyId(value, "track")));
         const pool = [...new Set(ids)].filter((id) => !excluded.has(id));
-        const { found, missing } = loadAnalyses(pool);
+        const analyses = loadAnalyses(pool);
+        // P17: faixas de sets recentes saem do pool só se sobrar metade dele (avoidRecent); sem tamanho pedido o set é a playlist inteira e nada sai
+        const soft = selecting && avoid?.length ? avoidRecent(analyses.found, new Set(avoid.map((value) => parseSpotifyId(value, "track")))) : { tracks: analyses.found, avoided: 0 };
+        const { missing } = analyses;
+        const found = soft.tracks;
         if (found.length < 2) {
           return fail(
             `Só ${found.length} faixa(s) com análise. Salve BPM e tom com dj_set_track_analysis. Sem análise: ${listNames(missing, names, cap)}`,
@@ -333,12 +345,14 @@ Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera
         if (missing.length) {
           result.warnings.unshift(`${missing.length} faixa(s) sem análise ficaram fora do set: ${listNames(missing, names, cap)}.`);
         }
+        if (soft.avoided > 0) result.warnings.push(`${soft.avoided} faixa(s) de sets recentes ficaram fora (avoid).`);
+        else if (selecting && avoid?.length) result.warnings.push("As faixas de avoid ficaram no pool: sem elas sobraria menos de metade das analisadas (ou menos de 10).");
         // P12: só quem não tem nem a estimativa da ReccoBeats; olha o set escolhido, não o pool inteiro
         if (result.order.some((position) => position.energy === null)) {
           result.warnings.push("Há faixas sem energia informada: a curva usa nota neutra para elas.");
         }
         attachPlans(result, tracks);
-        const data = { ...result, ordered_track_ids: result.order.map((position) => position.track_id) };
+        const data = { ...result, avoided: soft.avoided, ordered_track_ids: result.order.map((position) => position.track_id) };
         return render(response_format, () => setToMarkdown(result), data as unknown as Record<string, unknown>);
       } catch (error) {
         return fail(formatError(error));
@@ -356,12 +370,12 @@ Faixas sem análise ficam de fora e são listadas no aviso. Não cria nem altera
 Use para: diagnosticar a ordem atual de uma playlist, conferir uma ordem ajustada à mão pelo usuário, ou comparar duas versões do set.
 
 Args:
-  - playlist (string, opcional): avalia a ordem atual da playlist
+  - playlist (string, opcional): avalia a ordem atual da playlist (ID, link ou nome de uma playlist sua)
   - track_ids (string[], opcional): avalia esta ordem
   - curve, weights, response_format`,
       inputSchema: z
         .object({
-          playlist: z.string().optional(),
+          playlist: playlistArg,
           track_ids: z.array(z.string().min(1)).max(LIMITS.maxTracksPerSet).optional(),
           curve: curveSchema,
           weights: weightsSchema,
@@ -461,7 +475,7 @@ Devolve, por par, o tipo das regras e o do Jev (com a confiança), a nota das re
 O Jev recebe só números (BPM, Camelot, energia, ΔBPM): nunca nome, artista nem ID do Spotify. Cada chamada entra em jev-calls.jsonl na pasta de dados. É uma chamada de API paga por par, em sequência: para no limite de requisições (429/529) ou após 3 falhas seguidas e devolve o que já tem. Só use quando o usuário pedir a comparação.
 
 Args:
-  - playlist (string, opcional): usa os pares consecutivos da ordem da playlist
+  - playlist (string, opcional): usa os pares consecutivos da ordem da playlist (ID, link ou nome de uma playlist sua)
   - track_ids (string[], opcional): alternativa a playlist
   - pairs (1-40, padrão 20): quantos pares consecutivos comparar
   - response_format
@@ -469,7 +483,7 @@ Args:
 Sem TYPESAFE_API_KEY a ferramenta falha com um aviso claro. Faixas sem análise salva são puladas.`,
       inputSchema: z
         .object({
-          playlist: z.string().optional(),
+          playlist: playlistArg,
           track_ids: z.array(z.string().min(1)).max(LIMITS.maxTracksPerSet).optional(),
           pairs: z.number().int().min(1).max(JEV_COMPARE_PAIRS.max).default(JEV_COMPARE_PAIRS.default),
           response_format: responseFormat,
@@ -509,14 +523,14 @@ Sem TYPESAFE_API_KEY a ferramenta falha com um aviso claro. Faixas sem análise 
 O plano é feito por metadados (BPM, tom e energia), sem estrutura por compasso. O Spotify não tem API para transições: o usuário aplica à mão.
 
 Args:
-  - playlist (string, opcional): usa a ordem atual da playlist
+  - playlist (string, opcional): usa a ordem atual da playlist (ID, link ou nome de uma playlist sua)
   - track_ids (string[], opcional): usa esta ordem
   - response_format
 
 Faixas sem análise salva são puladas e listadas no topo.`,
       inputSchema: z
         .object({
-          playlist: z.string().optional(),
+          playlist: playlistArg,
           track_ids: z.array(z.string().min(1)).max(LIMITS.maxTracksPerSet).optional(),
           response_format: responseFormat,
         })

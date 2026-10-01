@@ -47,7 +47,11 @@
 .pm-row--playing { background: var(--signal-soft); }
 .pm-row--playing .pm-row__idx { color: var(--signal); }
 .pm-row--pending .pm-row__title { color: var(--ink-muted); }
-.pm-row__idx { font: 500 12px/1 var(--font-mono); color: var(--ink-subtle); text-align: right; display: flex; justify-content: flex-end; }
+/* app (Sprint 5): KeyBadge e EnergyMeter crescem 4% quando o mouse está na linha (120 ms) */
+.pm-key, .pm-energy { transition: transform var(--duration-fast) var(--ease-standard); }
+.pm-row:hover .pm-key, .pm-row:hover .pm-energy { transform: scale(1.04); }
+.pm-energy { transform-origin: left center; }
+.pm-row__idx { font: 500 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-subtle); text-align: right; display: flex; justify-content: flex-end; }
 .pm-row__main { display: flex; flex-direction: column; min-width: 0; }
 .pm-row__title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pm-row__artist { font-size: 13px; line-height: 20px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -76,10 +80,11 @@
 .pm-phrase__head + .pm-phrase__track { margin-top: 16px; }
 
 /* TransitionCard */
-.pm-trans { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--surface-raised); border: 1px solid var(--line); max-width: 640px; }
+.pm-trans { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--surface-raised); border: 1px solid var(--line); max-width: 640px; transition: border-color var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard); }
+/* app (Sprint 5): hover = borda line-strong e 1 px de altura, em 120 ms (vale também para os cards .cov e .sent do shell.css) */
+.pm-trans:hover { border-color: var(--line-strong); transform: translateY(-1px); }
 /* app: TransitionCard com onClick (role=button) */
-.pm-trans--link { cursor: pointer; transition: border-color var(--duration-fast) var(--ease-standard); }
-.pm-trans--link:hover { border-color: var(--line-strong); }
+.pm-trans--link { cursor: pointer; }
 .pm-trans__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .pm-trans__eyebrow { color: var(--ink-subtle); }
 .pm-trans__pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-3); }
@@ -103,6 +108,11 @@
 .pm-arc__line { fill: none; stroke: var(--ink-muted); stroke-width: 1.5; stroke-linejoin: round; }
 .pm-arc__dot { stroke: var(--surface-base); stroke-width: 1.5; }
 .pm-arc__dot--now { fill: var(--signal); stroke: var(--surface-base); stroke-width: 2; }
+/* app (Sprint 5): SetArc.tsx remonta o <g> a cada versão nova. O traço é desenhado em 400 ms (pm-draw, pathLength=1); a área faz fade e cada ponto
+   entra quando a ponta do traço chega (--t, de 0 a 1). O gradiente por energia é do próprio SVG (stroke inline); aqui só o movimento. */
+.pm-arc__line { animation: pm-draw var(--duration-slow) var(--ease-standard) backwards; }
+.pm-arc__area { animation: pm-fade-in var(--duration-slow) var(--ease-standard) backwards; }
+.pm-arc__dot { animation: pm-fade-in var(--duration-base) var(--ease-standard) backwards; animation-delay: calc(var(--t, 0) * var(--duration-slow)); }
 .pm-arc__cap { margin-top: var(--space-2); font-size: 13px; line-height: 20px; color: var(--ink-subtle); }
 
 /* CamelotWheel */
@@ -117,7 +127,8 @@
 /* Chat */
 .pm-msg { display: flex; flex-direction: column; gap: var(--space-2); max-width: 720px; }
 .pm-msg--user { align-items: flex-end; margin-left: auto; }
-.pm-msg--user .pm-msg__body { background: var(--surface-overlay); padding: 10px var(--space-4); border-radius: var(--radius-lg); max-width: 85%; }
+/* assinatura da bolha (Sprint 5): canto inferior direito de 6 px, o que "aponta" para quem falou */
+.pm-msg--user .pm-msg__body { background: var(--surface-overlay); padding: 10px var(--space-4); border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg); max-width: 85%; }
 .pm-msg__who { font: 500 11px/16px var(--font-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-subtle); }
 .pm-msg__body { color: var(--ink); }
 .pm-msg__body > * + * { margin-top: var(--space-3); }
@@ -132,13 +143,18 @@
 .pm-tool__name { font: 500 12px/16px var(--font-mono); color: var(--ink); }
 .pm-tool__detail { color: var(--ink-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pm-tool__status { color: var(--ink-subtle); white-space: nowrap; }
-/* app: entrada de mensagens e pílulas de ferramenta = fade de 200 ms, sem deslocamento */
-@keyframes pm-fade-in { from { opacity: 0; } }
-.pm-msg, .pm-tool { animation: pm-fade-in var(--duration-base) var(--ease-standard); }
-@media (prefers-reduced-motion: reduce) { .pm-btn, .pm-wheel__seg path, .pm-row, .pm-trans--link { transition: none; } .pm-msg, .pm-tool { animation: none; } }
+/* app (Sprint 5): a pílula entra com pop (pm-pop); mensagem, cards e Pensamento entram com fade + subida (pm-rise, regra em motion.css).
+   O ícone da pílula troca de estado em crossfade (Crossfade.tsx): o fundo do círculo acompanha em 200 ms. */
+.pm-tool { animation: pm-pop var(--duration-base) var(--ease-out) backwards; }
+.pm-tool__icon { transition: background-color var(--duration-base) var(--ease-standard), color var(--duration-base) var(--ease-standard); }
+.pm-tool__xf { width: 100%; height: 100%; }
+@media (prefers-reduced-motion: reduce) { .pm-btn, .pm-wheel__seg path, .pm-row, .pm-trans, .pm-key, .pm-energy, .pm-composer { transition: none; } }
 
 .pm-composer { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--surface-overlay); border: 1px solid var(--line); max-width: 720px; }
-.pm-composer:focus-within { border-color: var(--line-strong); }
+/* app (Sprint 5): o foco acende o anel --focus-ring em 200 ms. É o outline do DS (2 px, offset 2 px): segue o raio e continua visível em forced-colors
+   (o contorno transparente vira o da tela); o textarea tira o próprio outline mais abaixo. */
+.pm-composer { outline: 2px solid transparent; outline-offset: 2px; transition: outline-color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard); }
+.pm-composer:focus-within { border-color: var(--line-strong); outline-color: var(--focus-ring); }
 /* app, ponytail: field-sizing nativo em vez de medir o textarea com JS; cresce até 7 linhas. Sem suporte (Firefox) fica numa linha e rola. */
 .pm-composer__input { field-sizing: content; max-height: 168px; overflow-y: auto; }
 .pm-composer__input { resize: none; border: 0; background: transparent; color: var(--ink); font: 400 15px/24px var(--font-sans); padding: 4px 6px; min-height: 32px; }
@@ -152,6 +168,13 @@
 .pm-gate__head .label { color: var(--signal); }
 .pm-gate__head h3 { margin: 0; }
 .pm-gate__text { margin: 0; color: var(--ink-muted); }
+/* app (Sprint 5): o que vai para o Spotify, compacto: até 5 faixas (índice em mono + título) e "e mais N" */
+.pm-gate__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); font-size: 13px; line-height: 20px; }
+.pm-gate__list li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: var(--space-2); color: var(--ink-muted); }
+.pm-gate__list li > :first-child { font: 500 12px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-subtle); text-align: right; }
+.pm-gate__list li > :last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a linha "e mais N" é um <li> só de texto (sem elemento filho): ocupa a largura toda, alinhada ao título */
+.pm-gate__list li:not(:has(> *)) { display: block; padding-left: 32px; color: var(--ink-subtle); }
 .pm-gate__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
 .pm-phrase__mark--edge-start b { transform: none; }
@@ -159,6 +182,17 @@
 
 /* Thinking orbs — the only continuous animation in the system. */
 .pm-orb { display: block; flex: none; }
+/* app (Sprint 5): Crossfade.tsx. As duas camadas ficam absolutas no mesmo quadrado; a que sai desvanece (forwards: não pisca de volta antes de o React removê-la) */
+.pm-xfade { position: relative; display: block; flex: none; }
+.pm-xfade__layer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.pm-xfade__layer--in { animation: pm-fade-in var(--duration-base) var(--ease-standard); }
+.pm-xfade__layer--out { animation: pm-fade-out var(--duration-base) var(--ease-standard) forwards; }
+/* anel fino (line, 1 px, 88 px) atrás do orb de 64 do Início; fora da caixa do orb (inset negativo), então não muda o layout */
+.pm-orb--ring::before { content: ""; position: absolute; inset: -12px; border: 1px solid var(--line); border-radius: 50%; }
 .pm-thinking { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 24px; font-size: 14px; line-height: 20px; }
-.pm-thinking__verb { color: var(--ink-muted); }
+.pm-thinking--lg { gap: var(--space-3); }
+.pm-thinking__verb { color: var(--ink-muted); animation: pm-fade-in var(--duration-base) var(--ease-standard); }
 .pm-thinking__detail { font: 500 12px/16px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-subtle); }
+
+/* app (Sprint 5): o shorthand `font` zera font-variant-numeric; todo texto em mono com número segue tabular (DESIGN.md §9.3) */
+.pm-phrase__bars, .pm-phrase__mark b, .pm-trans__meta, .pm-wheel__seg text, .pm-wheel__center, .pm-tool__name { font-variant-numeric: tabular-nums; }

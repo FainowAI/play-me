@@ -60,7 +60,7 @@ claude mcp add spotify-dj -e SPOTIFY_CLIENT_ID=af28a5cf9c9d415e89402d0c342e6022 
 
 ## Fluxo de uso
 
-1. `spotify_list_my_playlists` para achar a playlist.
+1. `spotify_list_my_playlists` para achar a playlist (as ferramentas com `playlist` também aceitam o nome dela, ver "Playlist pelo nome").
 2. `spotify_get_playlist_tracks` para ler as faixas e ver quais estão sem análise.
 3. `dj_set_track_analysis` com BPM, tom e, se houver, energia e estilo de cada faixa.
 4. `dj_build_set` para calcular a ordem, com relatório de transições, pontos fracos e perfil de faixa-ponte.
@@ -103,6 +103,12 @@ Curvas: `classic` (warm up, construção, pico, clímax, encerramento), `peak_ti
 
 Custo: cresce com N × largura do feixe × faixas do pool. Um set de 90 min sobre 436 faixas leva menos de 1 s; 150 faixas escolhidas entre 600 levam cerca de 13 s.
 
+**Duração aproximada (P13).** O N por duração sai da média do pool, e as faixas escolhidas costumam ser mais longas (alvo de 90 min deu 103). Depois da seleção, enquanto a soma das durações passar do alvo + meia faixa (a duração média da ordem escolhida), a última faixa sai, nunca abaixo de 2, e o relatório é recalculado; o aviso diz "Ajustado para X min (alvo Y)" e "Selecionadas N de M" já traz o N final. Só vale com `duration_minutes`: `max_tracks` e o modo sem parâmetros nunca cortam. Também não corta com `end_track` (tiraria o fechamento pedido) nem quando falta a duração de alguma faixa da ordem (sem soma).
+
+## Playlist pelo nome
+
+Toda ferramenta que lê uma playlist aceita o ID, a URI, o link ou o NOME de uma playlist sua: `playlist` em `dj_build_set`, `dj_evaluate_order`, `jev_compare`, `export_mix_guide`, `metadata_lookup`, `metadata_coverage` e `spotify_get_playlist_tracks`, e `source_playlist` em `spotify_create_playlist_from_order`. Tudo passa por `resolvePlaylistId` (`services/spotify-client.ts`). ID, URI e link valem primeiro; o que não for nenhum deles é procurado entre as suas playlists (as 200 primeiras, em páginas de 50), por igualdade do nome inteiro sem acento, sem caixa e sem espaços nas pontas ("Eletro" não casa "[DJ MIX] Eletro"). Uma achada: usa o ID. Duas ou mais com o mesmo nome: erro que lista nome, itens e ID de cada uma. Nenhuma: "Playlist ... não encontrada". Link ou URI quebrado segue como identificador inválido.
+
 ## Energia estimada
 
 Faixa sem energia do Mixar ou do usuário e com `energy 0.62 (ReccoBeats)` nas notas ganha, na leitura, `energy = clamp(round(1 + x × 9), 1, 10)` e `energy_estimated: true` (o markdown marca com `*`). O valor derivado nunca é gravado em `analysis.json`; a energia do Mixar ou do usuário sempre vence. O aviso de "faixas sem energia" fica só para quem não tem nem a estimativa.
@@ -115,6 +121,7 @@ Chave e limiar vêm do ambiente: `TYPESAFE_API_KEY` e `JEV_MIN_CONFIDENCE` (padr
 - O Jev decide o tipo da transição só com confiança ≥ `JEV_MIN_CONFIDENCE`; comprimento e troca de grave saem das regras da ADR 0005 para o tipo escolhido.
 - Sem chave, com erro (HTTP, timeout) ou com confiança baixa, o planejador de regras decide e o plano avisa. `jev_compare` sem chave falha com aviso claro e, no 429/529 ou após 3 falhas seguidas, para e devolve o que já tem.
 - Cada chamada vira uma linha em `jev-calls.jsonl` na pasta de dados (hash do state, perguntas, respostas, confiança, latência, modelo e uso de tokens).
+- `ping()` (exportado de `services/jev.ts`; também `Jev.ping()`) é o teste de conexão do painel: uma pergunta `noul` mínima com state `{ ping: true }` e timeout de 5 s. Devolve `{ ok: true, model, latency_ms }` (HTTP 200) ou `{ ok: false, error }`, nunca lança, e sem chave responde `{ ok: false, error: "sem chave" }` sem fazer requisição. Não grava em `jev-calls.jsonl`. Sem argumentos lê `TYPESAFE_API_KEY` do ambiente; em teste, injete o `http`.
 - O `score` do Jev vem na escala dos índices dos critérios (0 a 4 para 5 níveis, confirmado em chamada real); a nota 1–5 é o score + 1. A confiança do score é separada da confiança do tipo.
 
 ## Segurança
@@ -131,5 +138,5 @@ Chave e limiar vêm do ambiente: `TYPESAFE_API_KEY` e `JEV_MIN_CONFIDENCE` (padr
 npm run build
 npm run test:engine   # motor de set com as 22 faixas da playlist Eletro
 npm run test:server   # ponta a ponta via stdio, sem tocar no Spotify
-npm run test:jev      # cliente do Jev com http falso: nenhuma chamada real, mesmo com chave no ambiente
+npm run test:jev      # cliente do Jev (inclui o ping) com http falso: nenhuma chamada real, mesmo com chave no ambiente
 ```

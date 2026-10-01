@@ -91,11 +91,11 @@ Legenda: ✅ feito · ⬜ a fazer.
     7.1 Notas
       7.1.1 ✅ Nota 1–5 por transição (transition_feedback)
     7.2 Jev
-      7.2.1 ✅ Validar acesso e SDK oficial (typesafe.ai)
+      7.2.1 ✅ Validar acesso e a API oficial (typesafe.ai; REST com fetch, sem o pacote SDK)
       7.2.2 ✅ Cliente com fallback de regras e registro de chamadas
-      7.2.3 ✅ Concordância Jev × regras × suas notas em 20 pares
+      7.2.3 🟡 Concordância Jev × regras em 20 pares (feita, 95%); × suas notas quando houver notas
     7.3 Ajuste
-      7.3.1 🟡 Recalibrar regras e pesos com as notas (mecanismo pronto; espera notas reais)
+      7.3.1 ⬜ Recalibrar regras e pesos com as notas (as notas já são gravadas; falta a ferramenta que as lê e propõe pesos)
 ```
 
 Fora da EAP do MVP (backlog): trilha de áudio (Fases 0 a 3 antigas: Beat This!, extratores, casamento de arquivos), prévia renderizada, export Rekordbox, set tocando no app, busca e comandos (⌘K), biblioteca em lote.
@@ -110,6 +110,8 @@ Fora da EAP do MVP (backlog): trilha de áudio (Fases 0 a 3 antigas: Beat This!,
 | Sprint 2 · Fase C (servidor) | 12/10 a 16/10 | 3.1.1, 3.1.2, 3.2.1, 4.1.1, 4.1.2, 4.1.3, 6.1.1 | Conversa com o agente via HTTP; set salvo em rascunho; gate bloqueando a criação da playlist | Sprint 1 |
 | Sprint 3 · Fase C (interface) | 19/10 a 23/10 | 5.1.1, 5.1.2, 5.2.1 a 5.2.4, 6.1.2, 6.2.1, 3.3.1 | Fluxo ponta a ponta no navegador: pedir set, ajustar, aprovar, playlist criada, guia do Mix | Sprint 2 |
 | Limpeza pós-Sprint 3 | 23/10 (0,5 dia) | `codebase-cleanup` em apps/ | Sem telas ou rotas fora do escopo | Sprint 3 |
+| Sprint 5 · Polimento ("Cabine viva") | 30/09 (feita) | QA no Chrome, pensamento do agente ao vivo, orbs e movimento (D41), Jev verde, nome do set, P13, P14, P17 (sets sem repetir faixas, D44) | Pensamento e texto em streaming; camadas com saída; Jev conectado em verde; "1h30" → ~90 min | Sprint 4 |
+| Sprint 6 · Ficha da faixa + Jev na ordem | a planejar | P15 (gênero/estilo + features), P16 (Jev escolhe o próximo) | Estilo por faixa; set montado com o Jev decidindo cada passo | Sprint 5 |
 | Sprint 4 · Fase K | 26/10 a 30/10 | 7.1.1, 7.2.1 a 7.2.3, 7.3.1, critérios de aceite da UI (DESIGN.md §9) | Notas gravadas; Jev comparado em 20 pares (se o acesso confirmar); MVP fechado | Sprint 3 |
 
 Marcos: fim do Sprint 1 = set planejado no Claude Desktop; fim do Sprint 3 = MVP usável; fim do Sprint 4 = MVP calibrado.

@@ -1,19 +1,21 @@
 /**
  * Itens do chat (src/state.ts) como mensagens: o usuário à direita; tudo que o Play.Me faz numa resposta
- * (ferramentas, texto, set, aprovação, erro) fica sob um rótulo "Play.Me" só, como no canvas.
+ * (pensamento, ferramentas, texto, set, aprovação, erro) fica sob um rótulo "Play.Me" só, como no canvas.
  */
 import { Fragment, useEffect, useState, type ReactNode } from "react";
+import type { Activity } from "../activity.ts";
 import { ApprovalGate, Button, ChatMessage, Icon, StatusTag, ThinkingStatus, ToolCall, TransitionCard } from "../components/playme/index.ts";
 import { transitionCard, weakestPosition, splitProblems } from "../setview.ts";
 import { pendingApproval, type ChatItem } from "../state.ts";
 import { renderMarkdown } from "./markdown.tsx";
-import { coverage, count, outOfSetLine, sentMeta, transitionsLabel } from "./text.ts";
+import { approvalTitles, coverage, count, outOfSetLine, sentMeta, transitionsLabel } from "./text.ts";
 import type { App } from "./useApp.ts";
 
 type Item = Exclude<ChatItem, { kind: "user" }>;
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 type SetItem = Extract<ChatItem, { kind: "set" }>;
 type ApprovalItem = Extract<ChatItem, { kind: "approval" }>;
+type ThinkingItem = Extract<ChatItem, { kind: "thinking" }>;
 type Group = { key: string; role: "user"; text: string } | { key: string; role: "assistant"; items: Item[] };
 
 /** Itens seguidos que não são do usuário formam uma resposta só. A chave da resposta é a da mensagem que a precede. */
@@ -61,9 +63,9 @@ export function ChatItems({ app }: { app: App }) {
   const groups = group(state.items);
   const reply = groups[groups.length - 1];
   const replying = reply?.role === "assistant" ? reply : null;
-  // ThinkingStatus abre a resposta e some quando o texto chega (DESIGN.md 4.1); com o gate pendente o turno espera o usuário
-  const thinking = state.busy && pendingApproval(state) === null && !(replying?.items.some((i) => i.kind === "text") ?? false);
-  if (thinking && !replying) groups.push({ key: `a-${[...state.items].reverse().find((i) => i.kind === "user")?.id ?? "start"}`, role: "assistant", items: [] });
+  // ThinkingStatus abre a resposta e fica até o fim do turno, junto do pensamento e do texto (contract.md, Sprint 5); com o gate pendente o turno espera o usuário
+  const working = state.busy && pendingApproval(state) === null;
+  if (working && !replying) groups.push({ key: `a-${[...state.items].reverse().find((i) => i.kind === "user")?.id ?? "start"}`, role: "assistant", items: [] });
   const running = [...state.items].reverse().find((i): i is ToolItem => i.kind === "tool" && i.status === "running");
 
   const blocks = (items: Item[]): ReactNode[] => {
@@ -81,7 +83,7 @@ export function ChatItems({ app }: { app: App }) {
         );
       tools = [];
     };
-    for (const it of items) {
+    for (const [i, it] of items.entries()) {
       if (it.kind === "tool") {
         tools.push(it);
         const summary = it.tool === "metadata_coverage" ? it.summary : undefined;
@@ -92,12 +94,15 @@ export function ChatItems({ app }: { app: App }) {
         continue;
       }
       flush();
-      if (it.kind === "text") out.push(<Fragment key={it.id}>{renderMarkdown(it.text)}</Fragment>);
+      if (it.kind === "text" || it.kind === "draft") {
+        // chave pela posição: o texto final chega com id novo (state.ts); com a mesma chave ele herda o DOM do rascunho e nada remonta no fim do streaming
+        out.push(<Fragment key={`md-${i}`}>{renderMarkdown(it.text, it.kind === "draft")}</Fragment>);
+      } else if (it.kind === "thinking") out.push(<Think key={it.id} item={it} />);
       else if (it.kind === "set") {
         const summary = marks.summary.has(it.id);
         (summary ? last : out).push(<SetBlock key={it.id} app={app} item={it} summary={summary} sent={marks.lastSent === it.id} />);
       } else if (it.kind === "approval") out.push(<ApprovalBlock key={it.id} app={app} item={it} deciding={deciding} setDeciding={setDeciding} />);
-      else out.push(<ErrorLine key={it.id} text={it.text} />);
+      else if (it.kind === "error") out.push(<ErrorLine key={it.id} text={it.text} />);
     }
     flush();
     return [...out, ...last];
@@ -112,12 +117,60 @@ export function ChatItems({ app }: { app: App }) {
           </ChatMessage>
         ) : (
           <ChatMessage key={g.key} role="assistant">
-            {thinking && i === groups.length - 1 && <ThinkingStatus activity={state.activity} detail={running?.detail || undefined} />}
+            {i === groups.length - 1 && <Status on={working} activity={state.activity} detail={running?.detail || undefined} />}
             {blocks(g.items)}
           </ChatMessage>
         ),
       )}
     </>
+  );
+}
+
+/**
+ * ThinkingStatus do topo da resposta. Ao fim do turno fica montado por 200 ms, congelado no último estado (o verbo não vira "Pronto"),
+ * desvanecendo e recolhendo (.pm-leaving, motion.css), e só então sai. O invólucro é sempre o mesmo nó: o orb não remonta na saída.
+ */
+function Status({ on, activity, detail }: { on: boolean; activity: Activity; detail: string | undefined }) {
+  const [last, setLast] = useState({ activity, detail }); // último estado com o turno andando
+  const [wasOn, setWasOn] = useState(on);
+  const [leaving, setLeaving] = useState(false);
+  // estado derivado durante o render (padrão do React): sem um quadro intermediário em que o status já sumiu
+  if (on && (last.activity !== activity || last.detail !== detail)) setLast({ activity, detail });
+  if (on !== wasOn) {
+    setWasOn(on);
+    setLeaving(wasOn);
+  }
+  useEffect(() => {
+    if (!leaving) return;
+    const t = setTimeout(() => setLeaving(false), 200);
+    return () => clearTimeout(t);
+  }, [leaving]);
+  if (!on && !leaving) return null;
+  const shown = on ? { activity, detail } : last;
+  return (
+    <div className={on ? undefined : "pm-leaving"}>
+      <ThinkingStatus activity={shown.activity} detail={shown.detail} size={32} />
+    </div>
+  );
+}
+
+/** Raciocínio do agente: aberto enquanto chega, fechado depois; o bloco final que o DJ abrir continua aberto. O cursor é CSS (`data-live`). */
+function Think({ item }: { item: ThinkingItem }) {
+  const [opened, setOpened] = useState(false); // o DJ abriu o bloco final
+  if (!item.text.trim()) return null; // pensamento vazio (a API pode omitir o texto): sem bloco
+  return (
+    <details
+      className="think"
+      data-live={item.live || undefined}
+      open={item.live || opened}
+      // o `toggle` também dispara quando o React muda `open` (ao vivo → final): só conta o clique do DJ num bloco final
+      onToggle={(e) => {
+        if (!item.live) setOpened(e.currentTarget.open);
+      }}
+    >
+      <summary>Pensamento</summary>
+      <pre>{item.text}</pre>
+    </details>
   );
 }
 
@@ -135,6 +188,7 @@ function ApprovalBlock({ app, item, deciding, setDeciding }: { app: App; item: A
   if (item.status === "rejected") return <p className="md-text md-p note">Envio não aprovado; o set voltou para rascunho.</p>;
   if (item.status === "expired") return <p className="md-text md-p note">Aprovação expirada; peça o envio de novo.</p>;
   if (item.status !== "pending") return null; // aprovada: a ToolCall já mostra o andamento
+  const order = app.state.set?.versions.flatMap((v) => v.snapshot?.order ?? []) ?? []; // rótulos das versões já lidas; o gate pode montar antes do set chegar (aí sem lista)
   const decide = (act: (approvalId: string) => Promise<void>) => {
     setDeciding(item.id); // desabilita o gate até a resposta; falha de rede devolve o clique (o decide nunca rejeita)
     void act(item.id).finally(() => setDeciding(null));
@@ -143,6 +197,7 @@ function ApprovalBlock({ app, item, deciding, setDeciding }: { app: App; item: A
     <ApprovalGate
       playlistName={item.playlist_name}
       trackCount={item.track_count}
+      tracks={approvalTitles(item.track_ids, order)}
       disabled={deciding === item.id}
       onApprove={() => decide(app.approve)}
       onReview={() => decide(app.reject)}
@@ -208,7 +263,7 @@ function SentBlock({ app }: { app: App }) {
   if (!set || set.set.status !== "enviado" || !latest) return null;
   const raw = set.set.spotify_url;
   const url = raw && raw.startsWith("https://open.spotify.com/") ? raw : null; // só abre o Spotify
-  // o nome da playlist criada vem do pedido de aprovação; o set guarda o título da conversa
+  // o nome da playlist criada vem do pedido de aprovação; o set guarda "<playlist> · <curva>"
   const created = app.state.items.filter((i) => i.kind === "approval" && i.status === "approved" && i.set_id === set.set.id).at(-1);
   const name = created?.kind === "approval" ? created.playlist_name : set.set.name;
   const copyGuide = async () => {

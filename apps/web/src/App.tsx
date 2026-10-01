@@ -8,6 +8,7 @@ import { ChatColumn } from "./shell/ChatColumn.tsx";
 import { Overlay } from "./shell/Overlay.tsx";
 import { Sidebar } from "./shell/Sidebar.tsx";
 import { useApp } from "./shell/useApp.ts";
+import { useRef } from "react";
 import { pendingApproval, selectVersion, splitLabel } from "./state.ts";
 import "./shell/shell.css";
 
@@ -18,13 +19,18 @@ export function App() {
   const hasPanel = state.set !== null && version !== null;
   const overlay = state.overlay;
   const track = overlay?.kind === "track" ? version?.snapshot?.order.find((t) => t.track_id === overlay.trackId) : undefined;
+  // "Fechar"/"Cancelar" e as ações que fecham passam pela saída animada da camada (Overlay.closeRef); sem camada montada, fecha direto
+  const overlayClose = useRef<(() => void) | null>(null);
+  const panelClose = useRef<(() => void) | null>(null);
+  const closeOverlay = () => (overlayClose.current ?? app.closeOverlay)();
+  const closePanel = () => (panelClose.current ?? app.closePanel)();
 
   // os botões do painel e das camadas viram mensagem no composer; o que estiver por cima fecha para a conversa aparecer.
   // Com um turno em andamento o envio é recusado e a camada fica aberta: o que o usuário preencheu (correção da Faixa) não se perde.
   const say = (message: string) => {
     if (!app.send(message)) return;
-    app.closeOverlay();
-    app.closePanel();
+    closeOverlay();
+    closePanel();
   };
 
   const panel = (drawer: boolean) =>
@@ -39,7 +45,7 @@ export function App() {
         onOpenTransition={(position) => app.openTransition(position)}
         onOpenTrack={app.openTrack}
         onSend={say}
-        onClose={drawer ? app.closePanel : undefined}
+        onClose={drawer ? closePanel : undefined}
       />
     ) : null;
 
@@ -55,23 +61,23 @@ export function App() {
         </Overlay>
       )}
       {hasPanel && narrow && state.panel.open && (
-        <Overlay open kind="drawer" side="right" width={400} label="Painel do set" onClose={app.closePanel}>
+        <Overlay open kind="drawer" side="right" width={400} label="Painel do set" onClose={app.closePanel} closeRef={panelClose}>
           {panel(true)}
         </Overlay>
       )}
       {overlay?.kind === "transition" && version && (
-        <Overlay open kind="drawer" side="right" width={820} padding="24px 32px" gap={20} label={`Transição ${overlay.position} para ${overlay.position + 1}`} onClose={app.closeOverlay}>
-          <TransitionWindow version={version} position={overlay.position} onClose={app.closeOverlay} onSend={say} onRate={app.rate} />
+        <Overlay open kind="drawer" side="right" width={820} padding="24px 32px" gap={20} label={`Transição ${overlay.position} para ${overlay.position + 1}`} onClose={app.closeOverlay} closeRef={overlayClose}>
+          <TransitionWindow version={version} position={overlay.position} onClose={closeOverlay} onSend={say} onRate={app.rate} />
         </Overlay>
       )}
       {overlay?.kind === "track" && version && (
-        <Overlay open kind="drawer" side="right" width={520} padding="24px 28px" gap={20} label={track ? `Faixa ${splitLabel(track.label).title}` : "Faixa"} onClose={app.closeOverlay}>
-          <TrackDrawer version={version} trackId={overlay.trackId} onClose={app.closeOverlay} onSend={say} />
+        <Overlay open kind="drawer" side="right" width={520} padding="24px 28px" gap={20} label={track ? `Faixa ${splitLabel(track.label).title}` : "Faixa"} onClose={app.closeOverlay} closeRef={overlayClose}>
+          <TrackDrawer version={version} trackId={overlay.trackId} onClose={closeOverlay} onSend={say} />
         </Overlay>
       )}
       {overlay?.kind === "settings" && (
-        <Overlay open kind="window" width={760} padding="28px 32px" gap={24} label="Configurações" onClose={app.closeOverlay}>
-          <SettingsWindow status={state.status} theme={state.theme} onTheme={app.setTheme} settings={state.settings} onSave={app.saveSettings} onClose={app.closeOverlay} />
+        <Overlay open kind="window" width={760} padding="28px 32px" gap={24} label="Configurações" onClose={app.closeOverlay} closeRef={overlayClose}>
+          <SettingsWindow status={state.status} theme={state.theme} onTheme={app.setTheme} settings={state.settings} onSave={app.saveSettings} onClose={closeOverlay} />
         </Overlay>
       )}
     </div>

@@ -2,6 +2,7 @@
  * Lógica pura do painel (sem React nem CSS): roda em Node sem build. Check runnable: ./logic.test.ts.
  */
 import { score } from "../setview.ts";
+import { curveLabel } from "../shell/text.ts";
 import type { SetSnapshot, SnapshotTrack, Weights } from "../types.ts";
 
 /** Energia plotada no arco: a estimada, ou o alvo da curva quando a faixa não tem energia. */
@@ -39,7 +40,7 @@ export function metaLine(snapshot: SetSnapshot): string {
   const parts = [`${snapshot.order.length} faixas`];
   if (typeof snapshot.duration_ms === "number") parts.push(`${Math.round(snapshot.duration_ms / 60000)} min`);
   if (snapshot.transitions.length > 0) parts.push(`nota média ${score(snapshot.average_score)}`);
-  parts.push(`curva ${snapshot.curve}`);
+  parts.push(`curva ${curveLabel(snapshot.curve)}`);
   return parts.join(" · ");
 }
 

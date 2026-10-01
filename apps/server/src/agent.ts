@@ -2,7 +2,7 @@
  * Agente: Claude Agent SDK + MCP spotify-dj, com o gate de aprovação.
  * CONTRATO: runChat é usada pela trilha HTTP; a implementação é da trilha agente.
  */
-import { query, type PermissionResult } from "@anthropic-ai/claude-agent-sdk";
+import { query, type PermissionResult, type ThinkingConfig } from "@anthropic-ai/claude-agent-sdk";
 import { AnalysisStore } from "spotify-dj-mcp-server/dist/services/analysis-store.js";
 import { sectionFor, targetEnergy } from "spotify-dj-mcp-server/dist/services/dj-engine.js";
 import type { CurvePreset, SetPosition, TrackAnalysis } from "spotify-dj-mcp-server/dist/types.js";
@@ -27,20 +27,26 @@ export interface ChatDeps {
   settings: Pick<SettingsStore, "get">;
   /** Nome da playlist pelo id (cache de playlists do Spotify); undefined enquanto a lista não foi lida. */
   playlistName: (id: string) => string | undefined;
+  /** Orçamento de pensamento por resposta, em tokens (PLAYME_THINKING_TOKENS); 0 desliga. */
+  thinkingTokens: number;
   /** ponytail: só os testes trocam o SDK por um falso. */
   query?: typeof query;
 }
 
 const MCP_PREFIX = "mcp__spotify-dj__";
 const CREATE_TOOL = `${MCP_PREFIX}spotify_create_playlist_from_order`;
+const BUILD_TOOL = `${MCP_PREFIX}dj_build_set`;
+const RECENT_SETS = 3; // P17: quantos sets anteriores o set novo evita repetir
 
 const SYSTEM_PROMPT = `Você é o assistente de DJ do Play.Me. Responda sempre em português.
 Use as ferramentas do spotify-dj para ler playlists, consultar BPM e tom, montar e avaliar sets.
 Nunca invente BPM nem tom: use só o que as ferramentas devolvem. Quando o tom estiver "a confirmar no Mixar", avise o usuário.
 Mostre o plano de transições e o guia do Mix quando fizer sentido.
-Se o usuário pedir uma duração ("1h30", "2 horas"), passe duration_minutes em dj_build_set (1h30 = 90); se pedir uma quantidade ("20 faixas"), passe max_tracks; sem pedido, não passe nenhum dos dois. Só use transition_plan com use_jev: true ou jev_compare quando o usuário pedir o Jev.
+Se o usuário pedir uma duração ("1h30", "2 horas"), passe duration_minutes em dj_build_set (1h30 = 90); se pedir uma quantidade ("20 faixas"), passe max_tracks; sem pedido, não passe nenhum dos dois. Com duration_minutes ou max_tracks o servidor preenche avoid com as faixas dos últimos sets, para o set novo não repetir as mesmas músicas; passe avoid: [] só se o usuário pedir para repetir faixas de sets anteriores. Só use transition_plan com use_jev: true ou jev_compare quando o usuário pedir o Jev.
+Na primeira montagem de set de uma playlist nesta conversa, chame metadata_coverage antes de dj_build_set e comente a cobertura em uma frase.
+Playlists cujo nome começa com [DJ MIX] são sets que o Play.Me já enviou ao Spotify: não as use como fonte de um set novo, a menos que o usuário peça; a fonte é a playlist original (ex.: "Eletro", não "[DJ MIX] Eletro").
 Nunca crie playlist no Spotify por conta própria: só chame a ferramenta de criar playlist quando o usuário pedir o envio. O envio passa por um botão de aprovação na tela; se o usuário não aprovar, o set continua como rascunho.
-Não use emojis. Use os termos das ferramentas sem trocar: a nota da passagem (0 a 1, do montador) é diferente da confiança do plano de transição.
+Nunca use emojis, nem no fim das frases. Use os termos das ferramentas sem trocar: a nota da passagem (0 a 1, do montador) é diferente da confiança do plano de transição.
 Você só tem as ferramentas do spotify-dj: não existe Bash, PowerShell, leitura de arquivos nem outra ferramenta. Nunca tente ler ou rodar nada. Se um resultado de ferramenta vier grande ou resumido, use o que já chegou e siga; nunca repita a mesma chamada para "ler o arquivo".`;
 
 /** Linha extra do system prompt com os pesos do usuário (porcentagem inteira, em fração com ponto). */
@@ -51,6 +57,22 @@ const weightsLine = (w: Weights): string => {
 
 /** `tools: []` já desliga as nativas; a lista é cinto e suspensório. */
 const NATIVE_TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "Agent", "Task", "NotebookEdit", "TodoWrite", "Skill", "AskUserQuestion"];
+
+/** Orçamento de pensamento padrão e piso da API (budget_tokens). */
+const MIN_THINKING_TOKENS = 1024;
+
+/** PLAYME_THINKING_TOKENS: inteiro >= 0; vazio, ausente ou inválido vale 1024; "0" desliga (não cai no padrão). */
+export function thinkingTokensFrom(value: string | undefined): number {
+  const n = Number(value);
+  return value?.trim() && Number.isInteger(n) && n >= 0 ? n : MIN_THINKING_TOKENS;
+}
+
+/**
+ * 0 desliga; o resto é orçamento fixo (o Haiku 4.5 não tem adaptive), nunca abaixo do piso da API.
+ * `display`: sem pedir o resumo o pensamento chega vazio (visto na API real com o Haiku 4.5 e o CLI do SDK).
+ */
+const thinkingOf = (tokens: number): ThinkingConfig =>
+  tokens > 0 ? { type: "enabled", budgetTokens: Math.max(tokens, MIN_THINKING_TOKENS), display: "summarized" } : { type: "disabled" };
 
 export interface TurnCtx {
   repo: Repo;
@@ -136,6 +158,10 @@ const firstLine = (text: string): string => {
   const first = text.trim().split(/\r?\n/)[0] ?? "";
   return first.length > 160 ? `${first.slice(0, 159)}…` : first;
 };
+/** A API recusou o pensamento (orçamento fora dos limites, histórico incompatível): o erro cita `thinking`. */
+const refusesThinking = (text: string): boolean => /thinking/i.test(text);
+/** Chaves de API não vão ao log. */
+const redactKey = (s: string): string => s.replace(/sk-[A-Za-z0-9_-]+/g, "[chave]");
 
 // ---------- detalhe das ferramentas: uma linha em pt-BR, do input no tool_start e do resultado no tool_end ----------
 
@@ -157,6 +183,8 @@ const line = (...parts: (string | undefined)[]): string => parts.filter(Boolean)
 const nota = (v: unknown): string | undefined => (typeof v === "number" ? v.toFixed(2).replace(".", ",") : undefined);
 const mins = (n: number | undefined): string | undefined => (n === undefined ? undefined : `${Math.round(n)} min`);
 const TYPE_LABEL: Record<string, string> = { blend: "Blend", bass_swap: "Bass swap", filter: "Filtro", echo_out: "Echo out" };
+/** Curva em português, para o nome do set. */
+const CURVE_LABEL: Record<string, string> = { classic: "clássica", peak_time: "peak time", warm_up: "warm up", sunrise: "sunrise" };
 /** Só chave própria: o tool_start sai antes do gate, e um nome estranho ("constructor") não pode cair no protótipo da tabela. */
 const own = <T>(table: Record<string, T>, key: string): T | undefined => (Object.hasOwn(table, key) ? table[key] : undefined);
 
@@ -303,8 +331,12 @@ export function reorderSnapshot(prev: SetSnapshot | null, order: string[]): SetS
   };
 }
 
-/** Grava a proposta (versão + snapshot + planos) e avisa a tela. */
-export function recordFromResult(ctx: TurnCtx, data: unknown): void {
+/**
+ * Grava a proposta (versão + snapshot + planos) e avisa a tela.
+ * `naming` (só o dj_build_set): o set que ainda leva o título cru da conversa passa a "<playlist> · <curva>"; o título da conversa não muda.
+ * `playlist`: o nome no cache de playlists pelo id ou, se o agente passou o NOME da playlist (P14 do MCP), o próprio texto; sem nenhum dos dois, "Set".
+ */
+export function recordFromResult(ctx: TurnCtx, data: unknown, naming?: { playlist?: string }): void {
   const proposal = extractProposal(data);
   if (!proposal) return;
   const name = ctx.repo.getSession(ctx.chatSessionId)?.title ?? "Set";
@@ -312,7 +344,21 @@ export function recordFromResult(ctx: TurnCtx, data: unknown): void {
   const { set, version } = ctx.repo.recordProposal(ctx.chatSessionId, name, proposal.curve, proposal.order, ctx.note, snapshot);
   // mesma ordem devolve a mesma versão, e os planos dela podem já ter nota (FK): plano gravado não é regravado
   if (ctx.repo.listPlans(version.id).length === 0) ctx.repo.savePlans(version.id, proposal.plans);
+  // antes do evento: a tela relê o set ao recebê-lo
+  if (naming && set.name === name) ctx.repo.renameSet(set.id, `${naming.playlist ?? "Set"} · ${own(CURVE_LABEL, proposal.curve) ?? proposal.curve}`);
   emitSet(ctx, set.id);
+}
+
+/**
+ * P17: set com tamanho (duração ou quantidade) evita as faixas dos últimos sets do DJ; sem isso a seleção determinística
+ * repete sempre as mesmas. O set atual da conversa não conta (ajustar o set não é montar outro), a menos que já tenha sido
+ * enviado. `avoid` vindo do agente (inclusive []) vale como veio; o MCP só tira as faixas se sobrar metade do pool.
+ */
+function withAvoid(ctx: TurnCtx, input: Record<string, unknown>): Record<string, unknown> {
+  if (input.avoid !== undefined || (input.duration_minutes === undefined && input.max_tracks === undefined)) return input;
+  const current = ctx.repo.getCurrentSet(ctx.chatSessionId);
+  const avoid = ctx.repo.recentTrackIds(current && current.status !== "enviado" ? current.id : null, RECENT_SETS);
+  return avoid.length > 0 ? { ...input, avoid } : input;
 }
 
 /** Gate do canUseTool: leitura do spotify-dj passa; criar playlist exige clique de aprovação; o resto é negado. */
@@ -320,7 +366,8 @@ export async function gate(ctx: TurnCtx, toolName: string, input: Record<string,
   if (toolName !== CREATE_TOOL) {
     // escrita destrutiva no store local não passa pelo chat (texto de faixa/playlist vira mensagem com papel de usuário)
     if (toolName === `${MCP_PREFIX}dj_delete_track_analysis`) return { behavior: "deny", message: "Apagar análise do store não passa pelo chat do Play.Me; use o Claude Desktop ou a CLI do MCP." };
-    return toolName.startsWith(MCP_PREFIX) ? { behavior: "allow", updatedInput: input } : { behavior: "deny", message: "Ferramenta não disponível no Play.Me." };
+    if (!toolName.startsWith(MCP_PREFIX)) return { behavior: "deny", message: "Ferramenta não disponível no Play.Me." };
+    return { behavior: "allow", updatedInput: toolName === BUILD_TOOL ? withAvoid(ctx, input) : input };
   }
   const { repo, chatSessionId } = ctx;
   const current = repo.getCurrentSet(chatSessionId);
@@ -366,18 +413,18 @@ export function finishCreate(ctx: TurnCtx, data: unknown, isError: boolean): voi
  * Sempre termina com um evento "done" ou "error"; nunca lança para quem chamou.
  */
 export async function runChat(deps: ChatDeps, chatSessionId: string, userMessage: string, emit: (event: ServerEvent) => void, signal?: AbortSignal): Promise<void> {
-  // o turno gravado leva todos os eventos, menos session e done; o custo vem do done
+  // o turno gravado leva todos os eventos, menos session, done e os deltas (só existem ao vivo); o custo vem do done
   const events: ServerEvent[] = [];
   let cost: number | null = null;
   const record = (event: ServerEvent): void => {
     if (event.type === "done") cost = event.cost_usd;
-    else if (event.type !== "session") events.push(event);
+    else if (event.type !== "session" && event.type !== "thinking_delta" && event.type !== "text_delta") events.push(event);
     emit(event);
   };
   try {
     const ctx: TurnCtx = { repo: deps.repo, waiter: deps.waiter, emit: record, chatSessionId, note: userMessage, storeDir: deps.storeDir };
     const resume = deps.repo.getSession(chatSessionId)?.agent_session_id;
-    const tools = new Map<string, string>(); // tool_use_id -> nome sem prefixo
+    const tools = new Map<string, { tool: string; input: unknown }>(); // tool_use_id -> nome sem prefixo e o input da chamada
     const names: Names = {
       playlist: (id) => deps.playlistName(id) ?? id,
       track: (id) => {
@@ -391,56 +438,94 @@ export async function runChat(deps: ChatDeps, chatSessionId: string, userMessage
     const abortController = new AbortController();
     // desconectar depois do clique de aprovação não cancela a criação já liberada (o resultado fica gravado no set)
     signal?.addEventListener("abort", () => { if (!ctx.approvedSetId) abortController.abort(); }, { once: true });
-    const q = (deps.query ?? query)({
-      prompt: userMessage,
-      options: {
-        model: deps.model,
-        systemPrompt: `${SYSTEM_PROMPT}\n${weightsLine(deps.settings.get().weights)}`,
-        mcpServers: { "spotify-dj": { type: "stdio", command: process.execPath, args: ["--no-warnings", deps.mcpServerPath], env: deps.mcpEnv } },
-        settingSources: [],
-        tools: [],
-        disallowedTools: NATIVE_TOOLS,
-        canUseTool: (name, input, opts) => gate(ctx, name, input, opts.signal),
-        abortController,
-        maxTurns: 20,
-        maxBudgetUsd: deps.maxBudgetUsd,
-        // ponytail: sem `env`, o SDK herda process.env (ANTHROPIC_API_KEY incluída)
-        ...(resume ? { resume } : {}),
-      },
-    });
-    for await (const msg of q) {
-      if (msg.type === "system" && msg.subtype === "init") {
-        deps.repo.setAgentSessionId(chatSessionId, msg.session_id);
-      } else if (msg.type === "assistant") {
-        for (const block of msg.message.content) {
-          if (block.type === "text") record({ type: "text", text: block.text });
-          else if (block.type === "tool_use") {
-            const tool = block.name.replace(MCP_PREFIX, "");
-            tools.set(block.id, tool);
-            record({ type: "tool_start", tool, tool_use_id: block.id, detail: summarize(tool, block.input, "start", names).detail });
+    const playlistNameOf = (input: unknown): string | undefined => {
+      // com track_ids o MCP nem olha `playlist`: o set não é dessa playlist
+      const p = isObj(input) && !len(input.track_ids) ? str(input.playlist)?.trim() : undefined;
+      if (!p) return undefined;
+      // P14: o que não é id, URI nem link é o NOME da playlist (o MCP a resolve pelo nome); id que o cache não conhece fica sem nome
+      return deps.playlistName(trackIdOf(p)) ?? (/^(https?:|spotify:)|^[0-9A-Za-z]{22}$/i.test(p) ? undefined : p);
+    };
+    /** Uma rodada do turno com o pensamento dado; emite os eventos até o done ou o error. */
+    const attempt = async (thinking: ThinkingConfig): Promise<void> => {
+      const q = (deps.query ?? query)({
+        prompt: userMessage,
+        options: {
+          model: deps.model,
+          systemPrompt: `${SYSTEM_PROMPT}\n${weightsLine(deps.settings.get().weights)}`,
+          mcpServers: { "spotify-dj": { type: "stdio", command: process.execPath, args: ["--no-warnings", deps.mcpServerPath], env: deps.mcpEnv } },
+          settingSources: [],
+          tools: [],
+          disallowedTools: NATIVE_TOOLS,
+          canUseTool: (name, input, opts) => gate(ctx, name, input, opts.signal),
+          abortController,
+          maxTurns: 20,
+          maxBudgetUsd: deps.maxBudgetUsd,
+          thinking,
+          includePartialMessages: true,
+          // ponytail: sem `env`, o SDK herda process.env (ANTHROPIC_API_KEY incluída)
+          ...(resume ? { resume } : {}),
+        },
+      });
+      for await (const msg of q) {
+        if (msg.type === "system" && msg.subtype === "init") {
+          deps.repo.setAgentSessionId(chatSessionId, msg.session_id);
+        } else if (msg.type === "stream_event") {
+          // ao vivo e só da conversa principal; os blocos completos chegam depois, nos `assistant`
+          const { event } = msg;
+          if (msg.parent_tool_use_id === null && event.type === "content_block_delta") {
+            const { delta } = event;
+            // delta vazio não diz nada e criaria um bloco vazio na tela
+            if (delta.type === "thinking_delta" && delta.thinking) record({ type: "thinking_delta", text: delta.thinking });
+            else if (delta.type === "text_delta" && delta.text) record({ type: "text_delta", text: delta.text });
           }
+        } else if (msg.type === "assistant") {
+          // a recusa do pensamento chega como mensagem sintética de erro da API: não vai ao chat (o result logo depois refaz o turno)
+          if (msg.error && refusesThinking(textOf(msg.message.content))) continue;
+          for (const block of msg.message.content) {
+            if (block.type === "text") record({ type: "text", text: block.text });
+            else if (block.type === "thinking" && block.thinking) record({ type: "thinking", text: block.thinking });
+            else if (block.type === "tool_use") {
+              const tool = block.name.replace(MCP_PREFIX, "");
+              tools.set(block.id, { tool, input: block.input });
+              record({ type: "tool_start", tool, tool_use_id: block.id, detail: summarize(tool, block.input, "start", names).detail });
+            }
+          }
+        } else if (msg.type === "user" && Array.isArray(msg.message.content)) {
+          for (const block of msg.message.content) {
+            if (block.type !== "tool_result") continue;
+            const call = tools.get(block.tool_use_id);
+            const tool = call?.tool ?? "";
+            const isError = block.is_error === true;
+            const data = structuredOf(msg.tool_use_result, block);
+            const end = isError ? { detail: redactPaths(firstLine(textOf(block.content))) } : summarize(tool, data, "end", names);
+            record({ type: "tool_end", tool, tool_use_id: block.tool_use_id, is_error: isError, ...end });
+            if (tool === "spotify_create_playlist_from_order") finishCreate(ctx, data, isError);
+            else if (!isError && tool === "dj_build_set") recordFromResult(ctx, data, { playlist: playlistNameOf(call?.input) });
+            else if (!isError && tool === "dj_evaluate_order") recordFromResult(ctx, data);
+          }
+        } else if (msg.type === "result") {
+          const failure = msg.subtype === "success" ? (msg.is_error ? msg.result : "") : msg.errors.join("\n");
+          if (refusesThinking(failure)) throw new Error(failure);
+          if (msg.subtype === "success") record({ type: "done", cost_usd: msg.total_cost_usd ?? null });
+          else record({ type: "error", message: "O agente terminou com erro. Tente de novo." });
+          return;
         }
-      } else if (msg.type === "user" && Array.isArray(msg.message.content)) {
-        for (const block of msg.message.content) {
-          if (block.type !== "tool_result") continue;
-          const tool = tools.get(block.tool_use_id) ?? "";
-          const isError = block.is_error === true;
-          const data = structuredOf(msg.tool_use_result, block);
-          const end = isError ? { detail: redactPaths(firstLine(textOf(block.content))) } : summarize(tool, data, "end", names);
-          record({ type: "tool_end", tool, tool_use_id: block.tool_use_id, is_error: isError, ...end });
-          if (tool === "spotify_create_playlist_from_order") finishCreate(ctx, data, isError);
-          else if (!isError && (tool === "dj_build_set" || tool === "dj_evaluate_order")) recordFromResult(ctx, data);
-        }
-      } else if (msg.type === "result") {
-        if (msg.subtype === "success") record({ type: "done", cost_usd: msg.total_cost_usd ?? null });
-        else record({ type: "error", message: "O agente terminou com erro. Tente de novo." });
-        return;
       }
+      record({ type: "error", message: "O agente encerrou sem resposta." });
+    };
+    const wanted = thinkingOf(deps.thinkingTokens);
+    try {
+      await attempt(wanted);
+    } catch (error) {
+      const raw = redactKey(error instanceof Error ? error.message : String(error));
+      // a API recusou o pensamento antes de qualquer evento: refaz o mesmo turno, uma vez, sem ele
+      if (wanted.type !== "enabled" || events.length > 0 || signal?.aborted || !refusesThinking(raw)) throw error;
+      console.error("pensamento recusado pela API, refazendo o turno sem ele:", raw);
+      await attempt({ type: "disabled" });
     }
-    record({ type: "error", message: "O agente encerrou sem resposta." });
   } catch (error) {
     const raw = error instanceof Error ? error.message : String(error);
-    console.error("agente falhou:", raw.replace(/sk-[A-Za-z0-9_-]+/g, "[chave]"));
+    console.error("agente falhou:", redactKey(raw));
     record({ type: "error", message: signal?.aborted ? "Conversa encerrada." : "Falha no agente. Veja o log do servidor." });
   } finally {
     // o turno é gravado em qualquer saída (sucesso, erro ou abort); runChat nunca lança

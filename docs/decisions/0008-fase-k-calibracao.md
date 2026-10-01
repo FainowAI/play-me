@@ -31,5 +31,5 @@ Verificação em 30/09/2026 (testes + servidor real via `POST /api/chat`):
 
 - P13: a duração é aproximada (alvo 90 → 103 min); corte da última faixa ou N pela mediana são uma linha no `buildSet`.
 - P14: o agente passou o nome da playlist a `jev_compare` na primeira tentativa (a ferramenta pede id/link) e se recuperou listando as playlists; aceitar nome em `resolveTrackIds` resolve.
-- 7.3.1 (recalibrar pesos) só faz sentido com notas reais: usar o set, dar notas na Transição expandida e então pedir a recalibração.
+- 7.3.1 (recalibrar pesos) ainda não tem código: as notas são gravadas, mas nada as lê; a ferramenta entra na sprint de fechamento e só faz sentido com notas reais (≥ 20).
 - P11 fica em observação: com sets de ~20 faixas o resultado do `dj_build_set` deixou de ir para arquivo.

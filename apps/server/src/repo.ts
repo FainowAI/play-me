@@ -34,6 +34,8 @@ export interface Repo {
   recordProposal(chatSessionId: string, name: string, curve: string, order: string[], note: string | null, snapshot: SetSnapshot | null): { set: SetRow; version: SetVersion };
   listVersions(setId: string): SetVersion[]; // versão 1 primeiro
   latestVersion(setId: string): SetVersion | undefined;
+  /** Faixas (sem repetição) da última versão dos `limit` sets mais recentes, menos `exceptSetId`: o set novo evita repeti-las (P17). */
+  recentTrackIds(exceptSetId: string | null, limit: number): string[];
   /** Substitui os planos da versão; lança FOREIGN KEY se algum já tem nota (quem chama não regrava plano existente). */
   savePlans(versionId: string, plans: PlanInput[]): void;
   listPlans(versionId: string): PlanRow[]; // cada plano com a última nota (`feedback`) ou null
@@ -41,6 +43,8 @@ export interface Repo {
   addFeedback(planId: string, rating: number, notes: string | null): TransitionFeedback | undefined;
   /** Aplica a máquina de estados; lança InvalidTransitionError fora das transições permitidas. */
   setStatus(setId: string, status: SetStatus, spotify?: { playlist_id: string | null; url: string | null }): SetRow;
+  /** Troca o nome do set (o agente troca o título cru da conversa por "<playlist> · <curva>"); lança se o set não existe. */
+  renameSet(setId: string, name: string): SetRow;
 
   createApproval(chatSessionId: string, setId: string | null, action: string, payload: unknown): Approval;
   getApproval(id: string): Approval | undefined;
@@ -198,6 +202,16 @@ export function openRepo(dbPath: string): Repo {
     all("SELECT * FROM set_versions WHERE set_id = ? ORDER BY version", toVersion, setId);
   const latestVersion = (setId: string) =>
     one("SELECT * FROM set_versions WHERE set_id = ? ORDER BY version DESC LIMIT 1", toVersion, setId);
+  const recentTrackIds = (exceptSetId: string | null, limit: number): string[] => {
+    const rows = db
+      .prepare(
+        `SELECT v.order_json FROM sets s JOIN set_versions v ON v.set_id = s.id
+           AND v.version = (SELECT MAX(version) FROM set_versions WHERE set_id = s.id)
+         WHERE s.id <> ? ORDER BY s.created_at DESC, s.rowid DESC LIMIT ?`,
+      )
+      .all(exceptSetId ?? "", limit) as { order_json: string }[];
+    return [...new Set(rows.flatMap((r) => JSON.parse(r.order_json) as string[]))];
+  };
   const getApproval = (aid: string) => one("SELECT * FROM approvals WHERE id = ?", toApproval, aid);
   const getCurrentSet = (chatSessionId: string) =>
     one("SELECT * FROM sets WHERE chat_session_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1", raw<SetRow>, chatSessionId);
@@ -261,6 +275,7 @@ export function openRepo(dbPath: string): Repo {
     },
     listVersions,
     latestVersion,
+    recentTrackIds,
     savePlans(versionId, plans) {
       tx(() => {
         db.prepare("DELETE FROM transition_plans WHERE set_version_id = ?").run(versionId);
@@ -285,6 +300,11 @@ export function openRepo(dbPath: string): Repo {
       if (set.status !== status && !ALLOWED[set.status].includes(status)) throw new InvalidTransitionError(set.status, status);
       db.prepare("UPDATE sets SET status = ?, spotify_playlist_id = ?, spotify_url = ?, updated_at = ? WHERE id = ?")
         .run(status, spotify ? spotify.playlist_id : set.spotify_playlist_id, spotify ? spotify.url : set.spotify_url, now(), setId);
+      return getSet(setId)!;
+    },
+    renameSet(setId, name) {
+      if (!getSet(setId)) throw new Error(`Set inexistente: ${setId}.`);
+      db.prepare("UPDATE sets SET name = ?, updated_at = ? WHERE id = ?").run(name, now(), setId);
       return getSet(setId)!;
     },
 

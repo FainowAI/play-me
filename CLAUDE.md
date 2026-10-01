@@ -331,7 +331,8 @@ Cada fase fecha com critério de aceite verificável. Não pular.
 - **Fase M — Metadados (concluída em 29/09).** BPM e tom pela ReccoBeats, com o Mixar como verdade (`metadata_lookup`, `metadata_coverage`; ADR 0004). Eletro gravada: 436 de 557 faixas (22 Mixar, 414 web); tom da web fica [A VALIDAR].
 - **Fase P — Planejador por metadados (concluída em 29/09, ADR 0005).** `TransitionPlan` sem estrutura, em TypeScript no MCP (D30): tipo e comprimento por BPM, tom e energia, mais o guia do Mix. Falta confirmar presets do Mix além de Fade e Rise.
 - **Fase C concluída: Sprint 2 (servidor, ADR 0006) em 29/09 e Sprint 3 (interface, ADR 0007) em 30/09.**
-- **Fase K (Sprint 4, ADR 0008) concluída em 30/09: tamanho do set por duração real, energia da web estimada, notas 1–5 e Jev validado (20 pares, 95% no tipo). Recalibração (7.3.1) espera notas reais.**
+- **Fase K (Sprint 4, ADR 0008) concluída em 30/09: tamanho do set por duração real, energia da web estimada, notas 1–5 e Jev validado (20 pares, 95% no tipo). Recalibração (7.3.1) ainda sem código: as notas são gravadas, falta a ferramenta que as lê.**
+- **Sprint 5 ("Cabine viva", ADR 0009) concluída em 30/09: pensamento do agente e texto em streaming (D42), vocabulário de movimento e identidade (D41), Jev com status real, nome do set, P13 e P14 (D43), sets sem repetir as faixas dos 3 últimos (P17, D44). Próximo: Sprint 6 (P15 gênero/estilo, P16 Jev na ordem), a planejar.**
 - **Fase C — Chat.** `apps/server` com Agent SDK e `apps/web` com as telas da D21.
 - **Fase K — Calibração.** Ajustar regras e pesos com as notas de `transition_feedback`.
 - **Trilha de áudio (opcional, quando houver arquivos):** antigas Fases 0 a 3 — protótipo da grade (Beat This!, suspenso em 28/09, ver prompt 02), casamento, análise básica, análise profunda.
